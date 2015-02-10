@@ -13,7 +13,7 @@ import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.animation.DecelerateInterpolator;
+import android.view.animation.AccelerateInterpolator;
 import android.widget.OverScroller;
 
 import java.util.ArrayDeque;
@@ -29,6 +29,8 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     public static final int LAYOUT_TYPE_CHANNEL_INDICATOR = 1;
     public static final int LAYOUT_TYPE_EVENTS = 2;
     public static final int LAYOUT_TYPE_OVERLAP_VIEW = 3;
+    public static final int SMOOTH_SCROLL_DURATION = 200;
+    private static final int REFRESH_INTERVAL = 20;
 
     /**
      * Calculated total width and height
@@ -107,6 +109,16 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     private OverScroller mScroll;
 
     /**
+     * Runnable that smooth scrolls list
+     */
+    private SmoothScrollRunnable mSmoothScrollRunnable;
+
+    /**
+     * View that is first touched by user (used for user click)
+     */
+    private View mTouchedView;
+
+    /**
      * Objects that helps with gesture events
      */
     private GestureDetector mGestureDetector;
@@ -121,15 +133,16 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         @Override
         public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX,
                 float velocityY) {
-            fling((int) -velocityX, (int) -velocityY);
+            // We will use fast scroll for vertical fling
+            fling((int) -velocityX, 0);//(int) -velocityY);
             return true;
         }
 
         public boolean onDown(MotionEvent e) {
             // if touch down during fling animation - reset touched item so it
             // wouldn't be handled as item tap
-            //            mTouchedView = mScroll.computeScrollOffset() ? null
-            //                    : getTouchedView(e.getX(), e.getY());
+            mTouchedView = mScroll.computeScrollOffset() ? null
+                    : getTouchedView(e.getX(), e.getY());
 
             mScroll.forceFinished(true);
             postInvalidateOnAnimation();
@@ -138,15 +151,15 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
 
         @Override
         public boolean onSingleTapConfirmed(MotionEvent e) {
-            //            if (mTouchedView == null) {
-            //                return true;
-            //            }
-            //            LayoutParams lp = (LayoutParams) mTouchedView.getLayoutParams();
-            //            if (lp != null) {
-            //                performItemClick(mTouchedView, lp.mChannelIndex, lp.mEventIndex);
-            //            }
-            //            selectNextView(mSelectedView,mTouchedView);
-            //            mTouchedView = null;
+            if (mTouchedView == null) {
+                return false;
+            }
+            LayoutParams lp = (LayoutParams) mTouchedView.getLayoutParams();
+            if (lp != null) {
+                //performItemClick(mTouchedView, lp.mChannelIndex, lp.mEventIndex);
+            }
+            selectNextView(mTouchedView);
+            mTouchedView = null;
             return true;
         }
     };
@@ -198,7 +211,8 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         //Initialize gesture helper object
         mGestureDetector = new GestureDetector(getContext(), mGestureListener);
         //Initialize scroller
-        mScroll = new OverScroller(context, new DecelerateInterpolator());
+        mScroll = new OverScroller(context, new AccelerateInterpolator());
+        mSmoothScrollRunnable = new SmoothScrollRunnable();
 
         // Calculate total grid width
         // TODO change to calculated
@@ -241,8 +255,25 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     }
 
     @Override
-    public boolean onTouchEvent(final MotionEvent event) {
-        return mGestureDetector.onTouchEvent(event);
+    public boolean onTouchEvent(MotionEvent event) {
+        //Workaround for SimpleOnGestureListener do not handle motion UP
+        boolean detectedUp = event.getAction() == MotionEvent.ACTION_UP;
+
+        mGestureDetector.onTouchEvent(event);
+        if (detectedUp) {
+            onUp(event);
+        }
+        return true;
+    }
+
+    private void onUp(MotionEvent event) {
+        log("onUp HAPPENED");
+        postOnAnimationDelayed(new Runnable() {
+            @Override
+            public void run() {
+                moveSelectedViewsToSelectionBounds();
+            }
+        }, REFRESH_INTERVAL);
     }
 
     @Override
@@ -389,6 +420,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         mBlockLayoutRequests = true;
         try {
             if (mAdapter != null) {
+                log("CURRENT Y=" + mScroll.getCurrY());// mCurrentOffsetY);
                 layoutEvents();
                 layoutChannelIndicators();
                 layoutTimeLine();
@@ -728,6 +760,21 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         invalidate();
     }
 
+    protected boolean moveSelectedViewsToSelectionBounds() {
+        final View firstVisibleChild = isItemAttachedToWindow(LAYOUT_TYPE_CHANNEL_INDICATOR, mFirstChannelPosition,
+                INVALID_POSITION);
+        if (firstVisibleChild != null) {
+            int topInvisiblePart = mRectEventsArea.top - firstVisibleChild.getTop();
+            int topVisiblePart = firstVisibleChild.getHeight() - topInvisiblePart;
+            int scrollBy = (topInvisiblePart <= topVisiblePart ? -topInvisiblePart : topVisiblePart + mVerticalDivider);
+            if (scrollBy != 0) {
+                mSmoothScrollRunnable.startScrollBy(0, scrollBy);
+            }
+            return true;
+        }
+        return false;
+    }
+
     /**
      * @return Returns maximum amount of scroll to the bottom (how much mCurrentOffsetY can be)
      */
@@ -905,6 +952,43 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
 
         public LayoutParams(int width, int height) {
             super(width, height);
+        }
+    }
+
+    /**
+     * Smooth scroll runnable
+     */
+    class SmoothScrollRunnable implements Runnable {
+
+        void startScrollBy(int byX, int byY) {
+            log("SmoothScrollRunnable startScrollBy, byX=" + byX + ", byY=" + byY);
+            mScroll.forceFinished(true);
+            mScroll.startScroll(mCurrentOffsetX, mCurrentOffsetY, byX, byY, SMOOTH_SCROLL_DURATION);
+            BaseGuideView.this.postOnAnimationDelayed(this, REFRESH_INTERVAL);
+        }
+
+        void startScrollTo(int toX, int toY) {
+            startScrollBy(toX - mCurrentOffsetX, toY - mCurrentOffsetY);
+        }
+
+        @Override
+        public void run() {
+            log("SmoothScrollRunnable RUNNNNN");
+            if (mScroll.isFinished()) {
+                log("scroller is finished, done with smooth scroll");
+                return;
+            }
+            boolean animationRunning = mScroll.computeScrollOffset();
+            int x = mScroll.getCurrX();
+            int y = mScroll.getCurrY();
+            int diffX = x - mCurrentOffsetX;
+            int diffY = y - mCurrentOffsetY;
+            if (diffX != 0 || diffY != 0) {
+                offsetBy(diffX, diffY);
+            }
+            if (animationRunning) {
+                BaseGuideView.this.postOnAnimationDelayed(this, REFRESH_INTERVAL);
+            }
         }
     }
 

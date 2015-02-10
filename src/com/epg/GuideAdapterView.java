@@ -10,7 +10,7 @@ import android.view.ViewGroup;
  * Base adapter view that contains listener interfaces and defined public methods
  */
 public abstract class GuideAdapterView<T extends BaseGuideAdapter> extends ViewGroup {
-    protected static final String TAG = BaseGuideView.class.getSimpleName();
+    protected static final String TAG = GuideAdapterView.class.getSimpleName();
     /**
      * Represents an invalid position. All valid positions are in the range 0 to 1 less than the
      * number of items in the current adapter.
@@ -203,6 +203,32 @@ public abstract class GuideAdapterView<T extends BaseGuideAdapter> extends ViewG
      * @return Currently selected view.
      */
     public abstract View getSelectedView();
+
+    /**
+     * @return Currently selected channel position
+     */
+    public int getSelectedItemChannelPosition() {
+        int selectedChannel = INVALID_POSITION;
+        try {
+            selectedChannel = ((BaseGuideView.LayoutParams) mSelectedView.getLayoutParams())
+                    .mChannelIndex;
+        } catch (Exception e) {
+        }
+        return selectedChannel;
+    }
+
+    /**
+     * @return Currently selected event position
+     */
+    public int getSelectedItemEventPosition() {
+        int selectedEvent = INVALID_POSITION;
+        try {
+            selectedEvent = ((BaseGuideView.LayoutParams) mSelectedView.getLayoutParams())
+                    .mEventIndex;
+        } catch (Exception e) {
+        }
+        return selectedEvent;
+    }
 
     /**
      * Gets the data associated with the specified position in the list.
