@@ -31,7 +31,15 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     public static final int LAYOUT_TYPE_OVERLAP_VIEW = 3;
     public static final int SMOOTH_SCROLL_DURATION = 200;
     private static final int REFRESH_INTERVAL = 20;
+    static final int SCROLL_STATE_NORMAL = 0;
+    static final int SCROLL_STATE_FAST_SCROLL = 1;
+    static final int SCROLL_STATE_ANIM_OPEN = 2;
+    static final int SCROLL_STATE_ANIM_CLOSE = 3;
 
+    /**
+     * Active scrolling state
+     */
+    int mScrollState = SCROLL_STATE_NORMAL;
     /**
      * Calculated total width and height
      * (Represents total presentation area size)
@@ -106,12 +114,12 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     /**
      * Object for guide scrolling horizontally and vertically.
      */
-    private OverScroller mScroll;
+    OverScroller mScroll;
 
     /**
      * Runnable that smooth scrolls list
      */
-    private SmoothScrollRunnable mSmoothScrollRunnable;
+    SmoothScrollRunnable mSmoothScrollRunnable;
 
     /**
      * View that is first touched by user (used for user click)
@@ -760,6 +768,11 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         invalidate();
     }
 
+    /**
+     * Scroll guide so the selection area should be always populated with selected views
+     *
+     * @return
+     */
     protected boolean moveSelectedViewsToSelectionBounds() {
         final View firstVisibleChild = isItemAttachedToWindow(LAYOUT_TYPE_CHANNEL_INDICATOR, mFirstChannelPosition,
                 INVALID_POSITION);
@@ -962,7 +975,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
 
         void startScrollBy(int byX, int byY) {
             log("SmoothScrollRunnable startScrollBy, byX=" + byX + ", byY=" + byY);
-            mScroll.forceFinished(true);
+            //            mScroll.forceFinished(true);//TODO check if this can be removed
             mScroll.startScroll(mCurrentOffsetX, mCurrentOffsetY, byX, byY, SMOOTH_SCROLL_DURATION);
             BaseGuideView.this.postOnAnimationDelayed(this, REFRESH_INTERVAL);
         }

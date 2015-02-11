@@ -3,6 +3,7 @@ package com.epg;
 import android.content.Context;
 import android.graphics.Color;
 import android.util.AttributeSet;
+import android.view.KeyEvent;
 import android.view.View;
 
 /**
@@ -43,6 +44,60 @@ public class GuideView extends BaseGuideView {
         mOverlapChannelIndicatorsView.setBackgroundColor(Color.BLACK);
         mOverlapTimeLineView.setBackgroundColor(Color.BLACK);
 
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        boolean handled = false;
+        if (mScroll.isFinished()) {
+            if (mSelectedView != null) {
+                handled = mSelectedView.dispatchKeyEvent(event);
+            }
+        }
+        return handled || super.dispatchKeyEvent(event);
+    }
+
+    @Override
+    public boolean onKeyUp(int keyCode, KeyEvent event) {
+//        if (mOnLongPressScrollListener != null && mLongPressStarted) {
+        //            mOnLongPressListener.onLongPressStopped();
+        //            mLongPressStarted = false;
+        //        }
+        return super.onKeyUp(keyCode, event);
+    }
+
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (mAdapter.getChannelsCount() == 0) {
+            return false;
+        }
+        switch (keyCode) {
+        case KeyEvent.KEYCODE_DPAD_UP: {
+            if (mFirstChannelPosition > 0) {
+                mSmoothScrollRunnable.startScrollTo(0, (mSelectedItemPosition - 3) * (mChannelRowHeight +
+                        mVerticalDivider));
+            }
+            return true;
+        }
+        case KeyEvent.KEYCODE_DPAD_DOWN: {
+            if (mLastChannelPosition < mAdapter.getChannelsCount() - 1) {
+                mSmoothScrollRunnable.startScrollTo(0, (mSelectedItemPosition - 1) * (mChannelRowHeight +
+                        mVerticalDivider));
+            }
+            return true;
+        }
+        case KeyEvent.KEYCODE_DPAD_LEFT: {
+            return true;
+        }
+        case KeyEvent.KEYCODE_DPAD_RIGHT: {
+            return true;
+        }
+        case KeyEvent.KEYCODE_DPAD_CENTER:
+        case KeyEvent.KEYCODE_ENTER: {
+            return performItemClick(mSelectedView);
+        }
+        }
+        return super.onKeyDown(keyCode, event);
     }
 
     @Override
@@ -130,12 +185,18 @@ public class GuideView extends BaseGuideView {
                 + mFirstChannelPosition);
         FirstPositionInfo firstPositionInfo;
         int currentRowHeight = 0;
+        mSelectedItemPosition = mFirstChannelPosition;
+        int maxRowHeight = 0;
         // Calculate first child top invisible part
         currentY -= mCurrentOffsetY % (mChannelRowHeight + mVerticalDivider);
         //Loop through channels
         for (int i = mFirstChannelPosition; i < channelsCount; i++) {
             //Calculate current row height
             currentRowHeight = calculateRowHeight(currentY, currentRowHeight);
+            if (currentRowHeight > maxRowHeight) {
+                maxRowHeight = currentRowHeight;
+                mSelectedItemPosition = i;
+            }
             // Get first child position based on current scroll value
             // and calculate its invisible part
             firstPositionInfo = getPositionAndOffsetForScrollValue(

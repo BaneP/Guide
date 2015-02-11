@@ -5,6 +5,7 @@ import android.util.AttributeSet;
 import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.accessibility.AccessibilityEvent;
 
 /**
  * Base adapter view that contains listener interfaces and defined public methods
@@ -43,9 +44,29 @@ public abstract class GuideAdapterView<T extends BaseGuideAdapter> extends ViewG
     int mChannelItemCount = 0;
 
     /**
+     * Position of selected item
+     */
+    int mSelectedItemPosition;
+
+    /**
      * Currently selected view
      */
     View mSelectedView;
+
+    /**
+     * On long press scroll started/stopped listener
+     */
+    OnLongPressScrollListener mOnLongPressScrollListener;
+
+    /**
+     * Item click listener
+     */
+    OnItemClickListener mOnItemClickListener;
+
+    /**
+     * View select listener
+     */
+    OnItemSelectedListener mOnItemSelectedListener;
 
     public GuideAdapterView(Context context) {
         super(context);
@@ -57,6 +78,96 @@ public abstract class GuideAdapterView<T extends BaseGuideAdapter> extends ViewG
 
     public GuideAdapterView(Context context, AttributeSet attrs, int defStyle) {
         super(context, attrs, defStyle);
+    }
+
+    /**
+     * Callback that indicates changes of long press scroll
+     */
+    public interface OnLongPressScrollListener {
+        /**
+         * Long press scroll started
+         */
+        void onLongPressScrollStarted();
+
+        /**
+         * Long press scroll stopped
+         */
+        void onLongPressScrollStopped();
+    }
+
+    public OnLongPressScrollListener getOnLongPressScrollListener() {
+        return mOnLongPressScrollListener;
+    }
+
+    public void setOnLongPressScrollListener(OnLongPressScrollListener mOnLongPressScrollListener) {
+        this.mOnLongPressScrollListener = mOnLongPressScrollListener;
+    }
+
+    public interface OnItemClickListener {
+        void onItemClick(GuideAdapterView<?> parent, View view, int channelPosition, int eventPosition);
+    }
+
+    public void setOnItemClickListener(OnItemClickListener onItemClickListener) {
+        this.mOnItemClickListener = onItemClickListener;
+    }
+
+    public final OnItemClickListener getOnItemClickListener() {
+        return mOnItemClickListener;
+    }
+
+    /**
+     * Call the OnItemClickListener, if it is defined. Performs all normal
+     * actions associated with clicking: reporting accessibility event, playing
+     * a sound, etc.
+     *
+     * @param view The view within the AdapterView that was clicked.
+     * @return True if there was an assigned OnItemClickListener that was
+     * called, false otherwise is returned.
+     */
+    boolean performItemClick(View view) {
+        if (mOnItemClickListener != null && view != null) {
+            BaseGuideView.LayoutParams lp = (BaseGuideView.LayoutParams) view.getLayoutParams();
+            mOnItemClickListener.onItemClick(this, view, lp.mChannelIndex, lp.mEventIndex);
+            if (view != null) {
+                view.sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_CLICKED);
+            }
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * TODO Define specific listeners here
+     */
+    public interface OnItemSelectedListener {
+        void onItemSelected(GuideAdapterView<?> parent, View view, int channelPosition, int eventPosition);
+
+        void onNothingSelected(GuideAdapterView<?> parent);
+    }
+
+    public void setOnItemSelectedListener(OnItemSelectedListener listener) {
+        mOnItemSelectedListener = listener;
+    }
+
+    public final OnItemSelectedListener getOnItemSelectedListener() {
+        return mOnItemSelectedListener;
+    }
+
+    void fireOnSelected() {
+        if (mOnItemSelectedListener == null) {
+            return;
+        }
+        if (mSelectedView == null) {
+            mOnItemSelectedListener.onNothingSelected(this);
+        } else {
+            BaseGuideView.LayoutParams lp = null;
+            try {
+                lp = (BaseGuideView.LayoutParams) mSelectedView.getLayoutParams();
+                mOnItemSelectedListener.onItemSelected(this, mSelectedView, lp.mChannelIndex, lp.mEventIndex);
+            } catch (ClassCastException e) {
+                mOnItemSelectedListener.onNothingSelected(this);
+            }
+        }
     }
 
     public abstract T getAdapter();
@@ -260,24 +371,6 @@ public abstract class GuideAdapterView<T extends BaseGuideAdapter> extends ViewG
         } else {
             return null;
         }
-    }
-
-    void fireOnSelected() {
-        //TODO
-        //        if (mOnItemSelectedListener == null) {
-        //            return;
-        //        }
-        //        if (mSelectedView == null) {
-        //            mOnItemSelectedListener.onNothingSelected(this);
-        //        }else {
-        //            EpgView.LayoutParams lp=null;
-        //            try {
-        //                lp = (EpgView.LayoutParams) mSelectedView.getLayoutParams();
-        //                mOnItemSelectedListener.onItemSelected(this, mSelectedView, lp.getChannelIndex(), lp.getEventIndex());
-        //            }catch (ClassCastException e) {
-        //                mOnItemSelectedListener.onNothingSelected(this);
-        //            }
-        //        }
     }
 
     protected void log(String msg) {
