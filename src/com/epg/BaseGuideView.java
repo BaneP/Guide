@@ -9,12 +9,9 @@ import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.util.AttributeSet;
 import android.util.SparseArray;
-import android.view.GestureDetector;
-import android.view.MotionEvent;
-import android.view.View;
-import android.view.ViewGroup;
-import android.view.animation.AccelerateInterpolator;
-import android.widget.OverScroller;
+import android.view.*;
+import android.view.animation.LinearInterpolator;
+import android.widget.Scroller;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -23,18 +20,33 @@ import java.util.ArrayList;
  * Base guide view class contains guide scroll implementation, selections.
  */
 public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
-    public static final int NUMBER_OF_MINUTES_IN_DAY = 1440;
-    public static final float BIG_CHANNEL_MULTIPLIER = 3.6f;
-    public static final int LAYOUT_TYPE_TIME_LINE = 0;
-    public static final int LAYOUT_TYPE_CHANNEL_INDICATOR = 1;
-    public static final int LAYOUT_TYPE_EVENTS = 2;
-    public static final int LAYOUT_TYPE_OVERLAP_VIEW = 3;
-    public static final int SMOOTH_SCROLL_DURATION = 200;
-    private static final int REFRESH_INTERVAL = 20;
+    static final int NUMBER_OF_MINUTES_IN_DAY = 1440;
+    public static final int BIG_CHANNEL_MULTIPLIER = 3;
+    /**
+     * Types of layout pass
+     */
+    static final int LAYOUT_TYPE_TIME_LINE = 0;
+    static final int LAYOUT_TYPE_CHANNEL_INDICATOR = 1;
+    static final int LAYOUT_TYPE_EVENTS = 2;
+    static final int LAYOUT_TYPE_OVERLAP_VIEW = 3;
+    /**
+     * Duration of smooth scroll animation while executing single scroll
+     */
+    public static final int SMOOTH_SCROLL_DURATION = 400;
+    /**
+     * Duration of smooth scroll animation while executing fast scroll
+     */
+    public static final int SMOOTH_FAST_SCROLL_DURATION = 170;
+    /**
+     * Refresh interval of smooth scroll animations
+     */
+    static final int REFRESH_INTERVAL = 16;//We want at least 1000/16=60 FPS while executing animation
+    /**
+     * Different scroll states
+     */
     static final int SCROLL_STATE_NORMAL = 0;
     static final int SCROLL_STATE_FAST_SCROLL = 1;
-    static final int SCROLL_STATE_ANIM_OPEN = 2;
-    static final int SCROLL_STATE_ANIM_CLOSE = 3;
+    static final int SCROLL_STATE_FAST_SCROLL_END = 2;
 
     /**
      * Active scrolling state
@@ -51,6 +63,11 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      */
     protected int mCurrentOffsetX;
     protected int mCurrentOffsetY;
+
+    /**
+     * Index of expanded channel, used while in fast scroll state
+     */
+    int mExpandedChannelIndex = INVALID_POSITION;
 
     /**
      * Calculated sections of guide window
@@ -114,7 +131,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     /**
      * Object for guide scrolling horizontally and vertically.
      */
-    OverScroller mScroll;
+    Scroller mScroll;
 
     /**
      * Runnable that smooth scrolls list
@@ -219,7 +236,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         //Initialize gesture helper object
         mGestureDetector = new GestureDetector(getContext(), mGestureListener);
         //Initialize scroller
-        mScroll = new OverScroller(context, new AccelerateInterpolator());
+        mScroll = new Scroller(context, new LinearInterpolator());
         mSmoothScrollRunnable = new SmoothScrollRunnable();
 
         // Calculate total grid width
@@ -428,7 +445,6 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         mBlockLayoutRequests = true;
         try {
             if (mAdapter != null) {
-                log("CURRENT Y=" + mScroll.getCurrY());// mCurrentOffsetY);
                 layoutEvents();
                 layoutChannelIndicators();
                 layoutTimeLine();
@@ -487,8 +503,33 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      * Recalculates first channel position
      */
     protected void calculateFirstChannelPosition() {
-        mFirstChannelPosition = mCurrentOffsetY
-                / (mChannelRowHeight + mVerticalDivider);
+        //In fast scroll we must take into account expanded channel
+        if (mScrollState == SCROLL_STATE_FAST_SCROLL) {
+            if (mFirstChannelPosition < mExpandedChannelIndex) {
+                mFirstChannelPosition = mCurrentOffsetY
+                        / (mChannelRowHeight + mVerticalDivider);
+            } else if (mFirstChannelPosition == mExpandedChannelIndex) {
+                //Calculate sum before expanded
+                int sum = mExpandedChannelIndex * (mChannelRowHeight + mVerticalDivider);
+                //Expanded is moved down so every invisible channel is normal size
+                if (sum >= mCurrentOffsetY) {
+                    mFirstChannelPosition = mCurrentOffsetY
+                            / (mChannelRowHeight + mVerticalDivider);
+                    return;
+                }
+                sum += (mChannelRowHeightExpanded + mVerticalDivider);
+                //Expanded is scrolled out of visible screen
+                if (sum < mCurrentOffsetY) {
+                    mFirstChannelPosition = mExpandedChannelIndex + 1;
+                }
+            } else {
+                mFirstChannelPosition =
+                        mCurrentOffsetY / (mChannelRowHeight + mVerticalDivider) - (BIG_CHANNEL_MULTIPLIER - 1);
+            }
+        } else {
+            mFirstChannelPosition = mCurrentOffsetY
+                    / (mChannelRowHeight + mVerticalDivider);
+        }
     }
 
     /**
@@ -504,40 +545,54 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     /**
      * Calculates current row height based on current row start Y position
      *
-     * @param currentY Current row start Y position
+     * @param currentY          Current row start Y position
+     * @param previousRowHeight Height of previously calculated row
+     * @param oldHeightOfTheRow Height of the same row calculated in previous layout pass
      * @return Calculated row height
      */
-    protected int calculateRowHeight(final int currentY, int previousRowHeight) {
+    protected int calculateRowHeight(final int currentY, int previousRowHeight, int oldHeightOfTheRow, int
+            channelIndex) {
         //Default row height
         int rowHeight = mChannelRowHeight;
-        //Current Y coordinate is above selected row area
-        if (currentY < mRectSelectedRowArea.top) {
-            mChildRect.set(mRectEventsArea.left, currentY, mRectEventsArea.right,
-                    currentY + mChannelRowHeight);
-            final int overlapValue = calculateYOverlapValue(mRectSelectedRowArea, mChildRect);
-            //There is overlap between child and selection area
-            if (overlapValue > 0) {
-                rowHeight =
-                        (mRectSelectedRowArea.top - mChildRect.top) + (int) Math.ceil((float) mChannelRowHeightExpanded
-                                * (
-                                (float) overlapValue / (float) mChannelRowHeight));
+        if (mScrollState == SCROLL_STATE_NORMAL) {
+            //Current Y coordinate is above selected row area
+            if (currentY < mRectSelectedRowArea.top) {
+                mChildRect.set(mRectEventsArea.left, currentY, mRectEventsArea.right,
+                        currentY + mChannelRowHeight);
+                final int overlapValue = calculateYOverlapValue(mRectSelectedRowArea, mChildRect);
+                //There is overlap between child and selection area
+                if (overlapValue > 0) {
+                    rowHeight =
+                            (mRectSelectedRowArea.top - mChildRect.top) + (int) Math
+                                    .ceil((float) mChannelRowHeightExpanded
+                                            * (
+                                            (float) overlapValue / (float) mChannelRowHeight));
+                }
             }
-        }
-        //Current Y coordinate is at the top of selection area
-        else if (currentY == mRectSelectedRowArea.top) {
-            rowHeight = mChannelRowHeightExpanded;
-        }
-        //Current Y coordinate is in the selected row area
-        else if (currentY <= mRectSelectedRowArea.bottom) {
-            rowHeight = mChannelRowHeightExpanded + mChannelRowHeight - previousRowHeight;
-            //final Rect child = new Rect(mRectEventsArea.left, currentY, mRectEventsArea.right,
-            //   mRectEventsArea.bottom);
-            //final int overlapValue = calculateYOverlapValue(mRectSelectedRowArea, child);
-            //guideRowInformation
-            //.setRowHeight(overlapValue + (mChannelRowHeight - (int) Math.ceil((float) mChannelRowHeight * (
-            //(float) overlapValue / (float) mChannelRowHeightExpanded))));
-            //guideRowInformation.setRowPivot(GuideRowInformation.MOVE_BOTTOM);
+            //Current Y coordinate is at the top of selection area
+            else if (currentY == mRectSelectedRowArea.top) {
+                rowHeight = mChannelRowHeightExpanded;
+            }
+            //Current Y coordinate is in the selected row area
+            else if (currentY <= mRectSelectedRowArea.bottom) {
+                rowHeight = mChannelRowHeightExpanded + mChannelRowHeight - previousRowHeight;
+                //final Rect child = new Rect(mRectEventsArea.left, currentY, mRectEventsArea.right,
+                //   mRectEventsArea.bottom);
+                //final int overlapValue = calculateYOverlapValue(mRectSelectedRowArea, child);
+                //guideRowInformation
+                //.setRowHeight(overlapValue + (mChannelRowHeight - (int) Math.ceil((float) mChannelRowHeight * (
+                //(float) overlapValue / (float) mChannelRowHeightExpanded))));
+                //guideRowInformation.setRowPivot(GuideRowInformation.MOVE_BOTTOM);
 
+            }
+        } else if (mScrollState == SCROLL_STATE_FAST_SCROLL) {
+            if (oldHeightOfTheRow != INVALID_POSITION) {
+                rowHeight = oldHeightOfTheRow;
+            } else if (channelIndex == mExpandedChannelIndex) {
+                rowHeight = mChannelRowHeightExpanded;
+            }
+        } else if (mScrollState == SCROLL_STATE_FAST_SCROLL_END) {
+            //TODO
         }
         return rowHeight;
     }
@@ -774,17 +829,36 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      * @return
      */
     protected boolean moveSelectedViewsToSelectionBounds() {
-        final View firstVisibleChild = isItemAttachedToWindow(LAYOUT_TYPE_CHANNEL_INDICATOR, mFirstChannelPosition,
-                INVALID_POSITION);
-        if (firstVisibleChild != null) {
-            int topInvisiblePart = mRectEventsArea.top - firstVisibleChild.getTop();
-            int topVisiblePart = firstVisibleChild.getHeight() - topInvisiblePart;
-            int scrollBy = (topInvisiblePart <= topVisiblePart ? -topInvisiblePart : topVisiblePart + mVerticalDivider);
-            if (scrollBy != 0) {
-                mSmoothScrollRunnable.startScrollBy(0, scrollBy);
+        if (mScrollState == SCROLL_STATE_NORMAL) {
+            final View firstVisibleChild = isItemAttachedToWindow(LAYOUT_TYPE_CHANNEL_INDICATOR, mFirstChannelPosition,
+                    INVALID_POSITION);
+            if (firstVisibleChild != null) {
+                int topInvisiblePart = mRectEventsArea.top - firstVisibleChild.getTop();
+                int topVisiblePart = firstVisibleChild.getHeight() - topInvisiblePart;
+                int scrollBy = (topInvisiblePart <= topVisiblePart ?
+                        -topInvisiblePart :
+                        topVisiblePart + mVerticalDivider);
+                if (scrollBy != 0) {
+                    mSmoothScrollRunnable.startScrollBy(0, scrollBy);
+                }
+                return true;
             }
-            return true;
         }
+        //        else if (mScrollState == SCROLL_STATE_FAST_SCROLL) {
+        //            final View selectedChild = isItemAttachedToWindow(LAYOUT_TYPE_CHANNEL_INDICATOR, mSelectedItemPosition,
+        //                    INVALID_POSITION);
+        //            if (selectedChild != null) {
+        //                log("moveSelectedViewsToSelectionBounds SCROLL_STATE_FAST_SCROLL channel number="
+        //                        + ((LayoutParams) selectedChild
+        //                        .getLayoutParams()).mChannelIndex);
+        //                int middlePoint = mRectEventsArea.top + (mRectSelectedRowArea.bottom - mRectSelectedRowArea.top) / 2;
+        //                int childMiddlePoint = (selectedChild.getBottom() - selectedChild.getTop()) / 2;
+        //                middlePoint = middlePoint - childMiddlePoint;
+        //                if (middlePoint != 0) {
+        //                    mSmoothScrollRunnable.startScrollBy(0, middlePoint);
+        //                }
+        //            }
+        //        }
         return false;
     }
 
@@ -968,32 +1042,175 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         }
     }
 
+    interface OnAnimationFinishedListener {
+        void animationFinished();
+    }
+
+    void changeScrollState(int newScrollState, int keyCode) {
+        log("changeScrollState, newScrollState=" + newScrollState + ", mScrollState=" + mScrollState + ", keyCode="
+                + keyCode);
+        switch (mScrollState) {
+        case SCROLL_STATE_NORMAL: {
+            if (newScrollState == SCROLL_STATE_FAST_SCROLL) {
+                int difference = keyCode == KeyEvent.KEYCODE_DPAD_DOWN ? 1 : -1;
+                if (mScroll.isFinished()) {
+                    mScrollState = SCROLL_STATE_FAST_SCROLL;
+                    mSmoothScrollRunnable.resumeVerticalScroll(difference);
+                } else if (mSmoothScrollRunnable.getOnAnimationFinishedListener() == null) {
+                    mSmoothScrollRunnable.setOnAnimationFinishedListener(new NormalScrollFinishedListener(difference));
+                }
+            }
+            break;
+        }
+        case SCROLL_STATE_FAST_SCROLL: {
+            //TODO
+            if (newScrollState == SCROLL_STATE_NORMAL) {
+                mScrollState = SCROLL_STATE_NORMAL;
+            } else if (newScrollState == SCROLL_STATE_FAST_SCROLL_END) {
+                mScrollState = SCROLL_STATE_FAST_SCROLL_END;
+            }
+            break;
+        }
+        case SCROLL_STATE_FAST_SCROLL_END: {
+            if (newScrollState == SCROLL_STATE_NORMAL) {
+                mScrollState = SCROLL_STATE_NORMAL;
+            }
+            break;
+        }
+        }
+    }
+
+    private class NormalScrollFinishedListener implements OnAnimationFinishedListener {
+        private int mDifference;
+
+        NormalScrollFinishedListener(int difference) {
+            this.mDifference = difference;
+        }
+
+        @Override
+        public void animationFinished() {
+            mScrollState = SCROLL_STATE_FAST_SCROLL;
+            mSmoothScrollRunnable.resumeVerticalScroll(mDifference);
+        }
+    }
+
     /**
      * Smooth scroll runnable
      */
     class SmoothScrollRunnable implements Runnable {
 
+        private OnAnimationFinishedListener mOnAnimationFinishedListener;
+        private int mDesiredChannelPosition;
+
+        private int calculateNewYPosition(int newChannelPosition) {
+            if (newChannelPosition == mSelectedItemPosition) {
+                return INVALID_POSITION;
+            }
+            if (mScrollState == SCROLL_STATE_NORMAL) {
+                return (newChannelPosition - mNumberOfVisibleChannels / 2) * (mChannelRowHeight +
+                        mVerticalDivider);
+            } else if (mScrollState == SCROLL_STATE_FAST_SCROLL) {
+                if (mCurrentOffsetY % (mChannelRowHeight + mVerticalDivider) == 0) {
+
+                    int newY = mCurrentOffsetY + (newChannelPosition - mSelectedItemPosition) * (mChannelRowHeight +
+                            mVerticalDivider);
+
+                    log("calculateNewYPosition IF currentY=" + mCurrentOffsetY + ", newY=" + newY
+                            + ", newChannelPosition="
+                            + newChannelPosition);
+                    return newY;
+                } else {
+                    int newY = (newChannelPosition - (mNumberOfVisibleChannels + BIG_CHANNEL_MULTIPLIER - 1) / 2) *
+                            (mChannelRowHeight +
+                                    mVerticalDivider);
+                    log("calculateNewYPosition currentY=" + mCurrentOffsetY + ", newY=" + newY + ", newChannelPosition="
+                            + newChannelPosition);
+                    return newY;
+                }
+            }
+            return INVALID_POSITION;
+        }
+
+        void resumeVerticalScroll(int difference) {
+            log("resumeVerticalScrollTo ENTERED~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ANIM "
+                    + "FINISHED= " + mScroll.isFinished());
+            //            if (mDesiredChannelPosition + difference != mSelectedItemPosition) {
+            if (!mScroll.isFinished()) {
+                if (mDesiredChannelPosition >= mChannelItemCount - 1) {
+                    return;
+                } else if (mDesiredChannelPosition <= 0) {
+                    return;
+                }
+                log("resumeVerticalScrollTo ONE ELEMENT HEIGHT=" + (mChannelRowHeight +
+                        mVerticalDivider) + ", difference=" + difference + ", selectedPosition="
+                        + mSelectedItemPosition + ", mDesiredChannelPosition=" + mDesiredChannelPosition);
+
+                final int newY = mScroll.getFinalY() + difference *
+                        (mChannelRowHeight + mVerticalDivider);
+
+                log("resumeVerticalScrollTo mScroll.getFinalY()=" + mScroll.getFinalY() + ", NEW Y=" + newY);
+
+                mScroll.setFinalY(newY);
+                mScroll.extendDuration(Math.abs(difference) *
+                        SMOOTH_FAST_SCROLL_DURATION + (mScroll.getDuration() - mScroll.timePassed()));
+                mDesiredChannelPosition = mDesiredChannelPosition + difference;
+            } else {
+                final int calculatedYCoordinate = calculateNewYPosition(mSelectedItemPosition + difference);
+                startScrollTo(mCurrentOffsetX, calculatedYCoordinate, SMOOTH_FAST_SCROLL_DURATION);
+            }
+            //            }
+        }
+
+        void startVerticalScrollToPosition(int newChannelPosition, int duration) {
+            //TODO if new channel index is visible on screen do normal scroll, if it is invisible perform fast scroll
+            this.mDesiredChannelPosition = newChannelPosition;
+            final int calculatedYCoordinate = calculateNewYPosition(newChannelPosition);
+            if (calculatedYCoordinate != INVALID_POSITION) {
+                startScrollTo(mCurrentOffsetX, calculatedYCoordinate, duration);
+            }
+        }
+
         void startScrollBy(int byX, int byY) {
+            startScrollBy(byX, byY, SMOOTH_SCROLL_DURATION);
+        }
+
+        void startScrollBy(int byX, int byY, int duration) {
             log("SmoothScrollRunnable startScrollBy, byX=" + byX + ", byY=" + byY);
-            //            mScroll.forceFinished(true);//TODO check if this can be removed
-            mScroll.startScroll(mCurrentOffsetX, mCurrentOffsetY, byX, byY, SMOOTH_SCROLL_DURATION);
-            BaseGuideView.this.postOnAnimationDelayed(this, REFRESH_INTERVAL);
+            //Dont start scroll if difference is 0
+            if (byX != 0 || byY != 0) {
+                mScroll.forceFinished(true);//TODO check if this can be removed
+                BaseGuideView.this.removeCallbacks(this);
+                mScroll.startScroll(mCurrentOffsetX, mCurrentOffsetY, byX, byY, duration);
+                BaseGuideView.this.postOnAnimation(this);
+            }
         }
 
         void startScrollTo(int toX, int toY) {
-            startScrollBy(toX - mCurrentOffsetX, toY - mCurrentOffsetY);
+            startScrollTo(toX, toY, SMOOTH_SCROLL_DURATION);
+        }
+
+        void startScrollTo(int toX, int toY, int duration) {
+            if (toY > getBottomOffsetBounds() || toY < 0 || toX > getRightOffsetBounds() || toX < 0) {
+                return;
+            }
+            startScrollBy(toX - mCurrentOffsetX, toY - mCurrentOffsetY, duration);
         }
 
         @Override
         public void run() {
-            log("SmoothScrollRunnable RUNNNNN");
             if (mScroll.isFinished()) {
                 log("scroller is finished, done with smooth scroll");
+                mDesiredChannelPosition = mSelectedItemPosition;
+                if (mOnAnimationFinishedListener != null) {
+                    mOnAnimationFinishedListener.animationFinished();
+                    mOnAnimationFinishedListener = null;
+                }
                 return;
             }
             boolean animationRunning = mScroll.computeScrollOffset();
             int x = mScroll.getCurrX();
             int y = mScroll.getCurrY();
+            log("SmoothScrollRunnable RUNNNNN  y=" + y);
             int diffX = x - mCurrentOffsetX;
             int diffY = y - mCurrentOffsetY;
             if (diffX != 0 || diffY != 0) {
@@ -1002,6 +1219,14 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
             if (animationRunning) {
                 BaseGuideView.this.postOnAnimationDelayed(this, REFRESH_INTERVAL);
             }
+        }
+
+        public OnAnimationFinishedListener getOnAnimationFinishedListener() {
+            return mOnAnimationFinishedListener;
+        }
+
+        public void setOnAnimationFinishedListener(OnAnimationFinishedListener mOnAnimationFinishedListener) {
+            this.mOnAnimationFinishedListener = mOnAnimationFinishedListener;
         }
     }
 

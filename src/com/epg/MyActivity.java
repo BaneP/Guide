@@ -31,7 +31,7 @@ public class MyActivity extends Activity {
 
         @Override
         public int getChannelsCount() {
-            return 15;
+            return 45;
         }
 
         @Override

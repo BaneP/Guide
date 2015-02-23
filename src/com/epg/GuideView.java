@@ -17,6 +17,13 @@ public class GuideView extends BaseGuideView {
     private View mOverlapChannelIndicatorsView;
     private View mOverlapTimeLineView;
 
+    private int mEventsAreaMiddlePoint = INVALID_POSITION;
+    /**
+     * Previous system time of long press
+     */
+    private long mLongPressTime = 0;
+    private boolean isInLongPress = false;
+
     public GuideView(Context context) throws Exception {
         super(context);
         init(context);
@@ -43,7 +50,6 @@ public class GuideView extends BaseGuideView {
         //Set background color to BLACK non transparent
         mOverlapChannelIndicatorsView.setBackgroundColor(Color.BLACK);
         mOverlapTimeLineView.setBackgroundColor(Color.BLACK);
-
     }
 
     @Override
@@ -59,10 +65,13 @@ public class GuideView extends BaseGuideView {
 
     @Override
     public boolean onKeyUp(int keyCode, KeyEvent event) {
-//        if (mOnLongPressScrollListener != null && mLongPressStarted) {
+        //        if (mOnLongPressScrollListener != null && mLongPressStarted) {
         //            mOnLongPressListener.onLongPressStopped();
         //            mLongPressStarted = false;
         //        }
+        if (isInLongPress) {
+            isInLongPress = false;
+        }
         return super.onKeyUp(keyCode, event);
     }
 
@@ -71,22 +80,50 @@ public class GuideView extends BaseGuideView {
         if (mAdapter.getChannelsCount() == 0) {
             return false;
         }
+        final boolean isLongPress = event.isLongPress();
         switch (keyCode) {
         case KeyEvent.KEYCODE_DPAD_UP: {
-            if (mFirstChannelPosition > 0) {
-                mSmoothScrollRunnable.startScrollTo(0, (mSelectedItemPosition - 3) * (mChannelRowHeight +
-                        mVerticalDivider));
+            log("ON KEY DOWN IS LONG PRESS=" + isLongPress + ", mSelectedItemPosition=" + mSelectedItemPosition + ", "
+                    + "CURRENT TIME=" + System.currentTimeMillis());
+            if (event.isLongPress()) {
+                isInLongPress = true;
             }
+            long now = System.currentTimeMillis();
+            if (isInLongPress && (now - mLongPressTime > SMOOTH_FAST_SCROLL_DURATION - 60)) {
+                mLongPressTime = now;
+                if (mScrollState == SCROLL_STATE_NORMAL) {
+                    changeScrollState(SCROLL_STATE_FAST_SCROLL, keyCode);
+                } else if (mScrollState == SCROLL_STATE_FAST_SCROLL) {
+                    mSmoothScrollRunnable.resumeVerticalScroll(-1);
+                }
+            } else if (!isInLongPress) {
+                mSmoothScrollRunnable.startVerticalScrollToPosition(mSelectedItemPosition - 1, SMOOTH_SCROLL_DURATION);
+            }
+
             return true;
         }
         case KeyEvent.KEYCODE_DPAD_DOWN: {
-            if (mLastChannelPosition < mAdapter.getChannelsCount() - 1) {
-                mSmoothScrollRunnable.startScrollTo(0, (mSelectedItemPosition - 1) * (mChannelRowHeight +
-                        mVerticalDivider));
+            log("ON KEY DOWN IS LONG PRESS=" + isLongPress + ", mSelectedItemPosition=" + mSelectedItemPosition
+                    + ", CURRENT TIME=" + System
+                    .currentTimeMillis());
+            if (event.isLongPress()) {
+                isInLongPress = true;
+            }
+            long now = System.currentTimeMillis();
+            if (isInLongPress && (now - mLongPressTime > SMOOTH_FAST_SCROLL_DURATION - 60)) {
+                mLongPressTime = now;
+                if (mScrollState == SCROLL_STATE_NORMAL) {
+                    changeScrollState(SCROLL_STATE_FAST_SCROLL, keyCode);
+                } else if (mScrollState == SCROLL_STATE_FAST_SCROLL) {
+                    mSmoothScrollRunnable.resumeVerticalScroll(1);
+                }
+            } else if (!isInLongPress) {
+                mSmoothScrollRunnable.startVerticalScrollToPosition(mSelectedItemPosition + 1, SMOOTH_SCROLL_DURATION);
             }
             return true;
         }
         case KeyEvent.KEYCODE_DPAD_LEFT: {
+            changeScrollState(SCROLL_STATE_NORMAL, INVALID_POSITION);
             return true;
         }
         case KeyEvent.KEYCODE_DPAD_RIGHT: {
@@ -102,7 +139,7 @@ public class GuideView extends BaseGuideView {
 
     @Override
     protected void layoutChannelIndicators() {
-        log("layoutChannelIndicators ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
+        //log("layoutChannelIndicators ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
         if (mOverlapChannelIndicatorsView.getLayoutParams() == null) {
             addChildView(LAYOUT_TYPE_OVERLAP_VIEW, mOverlapChannelIndicatorsView, mRectChannelIndicators.left,
                     0, mRectChannelIndicators.right - mRectChannelIndicators.left,
@@ -118,12 +155,20 @@ public class GuideView extends BaseGuideView {
         mLastChannelPosition = INVALID_POSITION;
         int currentRowHeight = 0;
         // Calculate first child top invisible part
-        currentY -= mCurrentOffsetY % (mChannelRowHeight + mVerticalDivider);
+        if (mFirstChannelPosition == mExpandedChannelIndex) {
+            int invisible = mExpandedChannelIndex * (mChannelRowHeight + mVerticalDivider);
+            currentY -= (mCurrentOffsetY - invisible);
+        } else {
+            currentY -= mCurrentOffsetY % (mChannelRowHeight + mVerticalDivider);
+        }
         //Loop through channels
         for (int i = mFirstChannelPosition; i < channelsCount; i++) {
-            //Calculate current row height
-            currentRowHeight = calculateRowHeight(currentY, currentRowHeight);
+            //Get view at the desired position, or null if view do not exist
             final View attached = isItemAttachedToWindow(LAYOUT_TYPE_CHANNEL_INDICATOR, i, INVALID_POSITION);
+            //Calculate current row height
+            currentRowHeight = calculateRowHeight(currentY, currentRowHeight,
+                    attached == null ? INVALID_POSITION : attached
+                            .getHeight(), i);
             if (attached == null) {
                 View child = mAdapter.getChannelIndicatorView(i, mRecycler.getChannelIndicatorView(), GuideView.this);
                 addChildView(LAYOUT_TYPE_CHANNEL_INDICATOR, child, mRectChannelIndicators.left, currentY,
@@ -160,7 +205,7 @@ public class GuideView extends BaseGuideView {
 
     @Override
     protected void layoutTimeLine() {
-        log("layoutTimeLine ###################################");
+        //log("layoutTimeLine ###################################");
         if (mOverlapTimeLineView.getLayoutParams() == null) {
             addChildView(LAYOUT_TYPE_OVERLAP_VIEW, mOverlapTimeLineView, 0,
                     mRectTimeLine.top, mRectTimeLine.right,
@@ -180,22 +225,37 @@ public class GuideView extends BaseGuideView {
         final int channelsCount = mChannelItemCount;
         mLastChannelPosition = INVALID_POSITION;
         calculateFirstChannelPosition();
+        log("layoutEvents FIRST CHANNEL POSITION=" + mFirstChannelPosition);
 
-        log("layoutEvents mFirstChannelPosition="
-                + mFirstChannelPosition);
+        if (mEventsAreaMiddlePoint == INVALID_POSITION) {
+            mEventsAreaMiddlePoint = mRectEventsArea.top + (mRectEventsArea.bottom - mRectEventsArea.top) / 2;
+        }
+        //log("layoutEvents mFirstChannelPosition=" + mFirstChannelPosition);
         FirstPositionInfo firstPositionInfo;
         int currentRowHeight = 0;
         mSelectedItemPosition = mFirstChannelPosition;
-        int maxRowHeight = 0;
         // Calculate first child top invisible part
-        currentY -= mCurrentOffsetY % (mChannelRowHeight + mVerticalDivider);
+        if (mFirstChannelPosition == mExpandedChannelIndex) {
+            int invisible = mExpandedChannelIndex * (mChannelRowHeight + mVerticalDivider);
+            currentY -= (mCurrentOffsetY - invisible);
+        } else {
+            currentY -= mCurrentOffsetY % (mChannelRowHeight + mVerticalDivider);
+        }
         //Loop through channels
         for (int i = mFirstChannelPosition; i < channelsCount; i++) {
+            //Get channel indicator view at the desired position, or null if view do not exist
+            final View attached = isItemAttachedToWindow(LAYOUT_TYPE_CHANNEL_INDICATOR, i, INVALID_POSITION);
             //Calculate current row height
-            currentRowHeight = calculateRowHeight(currentY, currentRowHeight);
-            if (currentRowHeight > maxRowHeight) {
-                maxRowHeight = currentRowHeight;
+            currentRowHeight = calculateRowHeight(currentY, currentRowHeight,
+                    attached == null ? INVALID_POSITION : attached
+                            .getHeight(), i);
+            //Calculate selected channel position
+            if (currentY <= mEventsAreaMiddlePoint && currentRowHeight + currentY >= mEventsAreaMiddlePoint) {
                 mSelectedItemPosition = i;
+                //Save index of expanded channel
+                if (mScrollState != SCROLL_STATE_FAST_SCROLL) {
+                    mExpandedChannelIndex = mSelectedItemPosition;
+                }
             }
             // Get first child position based on current scroll value
             // and calculate its invisible part
