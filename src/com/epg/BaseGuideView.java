@@ -79,7 +79,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     /**
      * Helper rectangle that is used for calculating row height
      */
-    private Rect mChildRect;
+    private Rect mChildRowHeightRect;
     /**
      * Calculated channel row heights
      */
@@ -92,19 +92,15 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     /**
      * Height of vertical divider declared in pixels
      */
-    protected int mVerticalDivider;
+    protected int mVerticalDividerHeight;
     /**
      * Width of horizontal divider declared in pixels
      */
-    protected int mHorizontalDivider;
+    protected int mHorizontalDividerWidth;
     /**
      * Divider drawable
      */
     protected Drawable mDivider;
-    /**
-     * Indicates maximum number of days to display inside guide
-     */
-    protected int mNumberOfDays;
     /**
      * Indicates number of channels to display inside guide
      */
@@ -114,10 +110,17 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      */
     protected Drawable mSelector;
     /**
+     * Selection rectangle position object, holds information about selected view coordinates on screen
+     */
+    private Rect mSelectorRect = new Rect();
+    /**
      * Time line progress indicator drawable
      */
+    //TODO draw time line progress on top of view
     protected Drawable mTimeLineProgressIndicator;
-
+    /**
+     * Time line indicator text format
+     */
     protected String mTimeLineTextFormat = "h:mm";
     /**
      * Epg data adapter
@@ -167,7 +170,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
             // if touch down during fling animation - reset touched item so it
             // wouldn't be handled as item tap
             mTouchedView = mScroll.computeScrollOffset() ? null
-                    : getTouchedView(e.getX(), e.getY());
+                    : getViewAtCoordinates(e.getX(), e.getY());
 
             mScroll.forceFinished(true);
             postInvalidateOnAnimation();
@@ -212,13 +215,10 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
             TypedArray a = context.getTheme().obtainStyledAttributes(attrs,
                     R.styleable.BaseGuideView, 0, 0);
             try {
-                mOneMinuteWidth = a.getDimensionPixelSize(
-                        R.styleable.BaseGuideView_oneMinutePixelWidth, 1);
-                mNumberOfDays = a.getInteger(R.styleable.BaseGuideView_numberOfDaysToDisplay, 1);
                 mNumberOfVisibleChannels = a.getInteger(R.styleable.BaseGuideView_numberOfChannelsToDisplay, 5);
-                mVerticalDivider = a.getDimensionPixelSize(
+                mVerticalDividerHeight = a.getDimensionPixelSize(
                         R.styleable.BaseGuideView_verticalDividerHeight, 1);
-                mHorizontalDivider = a.getDimensionPixelSize(
+                mHorizontalDividerWidth = a.getDimensionPixelSize(
                         R.styleable.BaseGuideView_horizontalDividerHeight, 0);
                 mDivider = a.getDrawable(R.styleable.BaseGuideView_divider);
                 mSelector = a.getDrawable(R.styleable.BaseGuideView_selector);
@@ -238,18 +238,15 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         //Initialize scroller
         mScroll = new Scroller(context, new LinearInterpolator());
         mSmoothScrollRunnable = new SmoothScrollRunnable();
-
-        // Calculate total grid width
-        // TODO change to calculated
-        mTotalWidth = 5205;// mOneMinutePixelWidth * NUMBER_OF_MINUTES_IN_DAY*
-        // mNumberOfDaysToDisplayData;
+        //Initialize recycler
         mRecycler = new Recycler();
+        //Used for calculating child row height
+        mChildRowHeightRect = new Rect();
+        //Initialize guide view
         setBackgroundColor(Color.BLACK);
         setFocusable(true);
 
-        //Used for calculating child row height
-        mChildRect = new Rect();
-
+        //
         mTimeList = new ColorDrawable(0x22EE0000);//RED
         mChannels = new ColorDrawable(0x2200EE00);//GREEN
         mEvents = new ColorDrawable(0x220000EE);//BLUE
@@ -292,7 +289,6 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     }
 
     private void onUp(MotionEvent event) {
-        log("onUp HAPPENED");
         postOnAnimationDelayed(new Runnable() {
             @Override
             public void run() {
@@ -321,6 +317,13 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         //Initialize some elements from adapter
         if (mAdapter != null) {
             mChannelItemCount = mAdapter.getChannelsCount();
+            //Get minute pixel width
+            mOneMinuteWidth = mAdapter.getOneMinuteWidth();
+            // Calculate total grid width
+            // TODO change to calculated
+            mTotalWidth = 5205;// mOneMinutePixelWidth * NUMBER_OF_MINUTES_IN_DAY*
+            // mNumberOfDaysToDisplayData;
+
             //We can not calculate total height if view is not finished its layout pass.
             if (getMeasuredHeight() > 0) {
                 mTotalHeight = calculateTotalHeight();
@@ -341,6 +344,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     @Override
     public void setSelection(int channelPosition) {
         //TODO
+
     }
 
     /**
@@ -374,11 +378,11 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
 
         //Calculate channel row height
         mChannelRowHeight = (int) ((float) viewHeight / (float) (mNumberOfVisibleChannels + BIG_CHANNEL_MULTIPLIER));
-        mChannelRowHeight -= mVerticalDivider;
+        mChannelRowHeight -= mVerticalDividerHeight;
 
         mChannelRowHeightExpanded = viewHeight - (mNumberOfVisibleChannels * mChannelRowHeight) -
-                (mNumberOfVisibleChannels - 1) * mVerticalDivider;
-        mChannelRowHeightExpanded -= mVerticalDivider;
+                (mNumberOfVisibleChannels - 1) * mVerticalDividerHeight;
+        mChannelRowHeightExpanded -= mVerticalDividerHeight;
         //Setup rect for sections
         mRectTimeLine.set(mChannelRowHeight, 0, viewWidth, mChannelRowHeight);
         mRectChannelIndicators.set(0, mChannelRowHeight, mChannelRowHeight, viewHeight);
@@ -386,7 +390,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
 
         //Setup selected row area
         final int selectedTop = mRectEventsArea.top + (mNumberOfVisibleChannels / 2) *
-                (mChannelRowHeight + mVerticalDivider);
+                (mChannelRowHeight + mVerticalDividerHeight);
         mRectSelectedRowArea.set(mChannelRowHeight, selectedTop, viewWidth, selectedTop + mChannelRowHeightExpanded);
 
         //Calculate total scroll value if adapter is setted
@@ -413,6 +417,15 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         if (mRectSelectedRowArea != null) {
             mSelectionRow.setBounds(mRectSelectedRowArea);
             mSelectionRow.draw(canvas);
+        }
+        // Draws selector on top of Guide view
+        if (mSelectedView != null) {
+            mSelectorRect.left = mSelectedView.getLeft();
+            mSelectorRect.top = mSelectedView.getTop();
+            mSelectorRect.right = mSelectedView.getRight();
+            mSelectorRect.bottom = mSelectedView.getBottom();
+            mSelector.setBounds(mSelectorRect);
+            mSelector.draw(canvas);
         }
     }
 
@@ -495,7 +508,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      * @return Calculated maximum scroll value
      */
     private int calculateTotalHeight() {
-        return (mChannelItemCount) * mChannelRowHeight + mVerticalDivider
+        return (mChannelItemCount) * mChannelRowHeight + mVerticalDividerHeight
                 * (mChannelItemCount) + mChannelRowHeightExpanded;
     }
 
@@ -503,37 +516,49 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      * Recalculates first channel position
      */
     protected void calculateFirstChannelPosition() {
-        //In fast scroll we must take into account expanded channel
+        /**
+         * In fast scroll we must take into account expanded channel
+         */
         if (mScrollState == SCROLL_STATE_FAST_SCROLL) {
+            //Expanded item is on the screen and it is not first visible
             if (mFirstChannelPosition < mExpandedChannelIndex) {
                 mFirstChannelPosition = mCurrentOffsetY
-                        / (mChannelRowHeight + mVerticalDivider);
-            } else if (mFirstChannelPosition == mExpandedChannelIndex) {
+                        / (mChannelRowHeight + mVerticalDividerHeight);
+            }
+            //Expanded was first visible on the screen, check if it is still visible
+            else if (mFirstChannelPosition == mExpandedChannelIndex) {
                 //Calculate sum before expanded
-                int sum = mExpandedChannelIndex * (mChannelRowHeight + mVerticalDivider);
+                int sum = mExpandedChannelIndex * (mChannelRowHeight + mVerticalDividerHeight);
                 //Expanded is moved down so every invisible channel is normal size
                 if (sum >= mCurrentOffsetY) {
                     mFirstChannelPosition = mCurrentOffsetY
-                            / (mChannelRowHeight + mVerticalDivider);
+                            / (mChannelRowHeight + mVerticalDividerHeight);
                     return;
                 }
-                sum += (mChannelRowHeightExpanded + mVerticalDivider);
+                sum += (mChannelRowHeightExpanded + mVerticalDividerHeight);
                 //Expanded is scrolled out of visible screen
                 if (sum < mCurrentOffsetY) {
                     mFirstChannelPosition = mExpandedChannelIndex + 1;
                 }
-            } else {
-                mFirstChannelPosition =
-                        mCurrentOffsetY / (mChannelRowHeight + mVerticalDivider) - (BIG_CHANNEL_MULTIPLIER - 1);
             }
-        } else {
+            //Expanded is not visible, it is above visible area
+            else {
+                //We must take into account expanded item
+                mFirstChannelPosition =
+                        mCurrentOffsetY / (mChannelRowHeight + mVerticalDividerHeight) - (BIG_CHANNEL_MULTIPLIER - 1);
+            }
+        }
+        /**
+         * For normal scroll first visible position is easily calculated
+         */
+        else {
             mFirstChannelPosition = mCurrentOffsetY
-                    / (mChannelRowHeight + mVerticalDivider);
+                    / (mChannelRowHeight + mVerticalDividerHeight);
         }
     }
 
     /**
-     * Calculates Y overlap value of 2 rects
+     * Calculates Y overlap value of 2 rectangles
      *
      * @return Calculated overlap value
      */
@@ -554,19 +579,21 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
             channelIndex) {
         //Default row height
         int rowHeight = mChannelRowHeight;
+        /**
+         * For normal scroll we must calculate row height based on current Y coordinate
+         */
         if (mScrollState == SCROLL_STATE_NORMAL) {
             //Current Y coordinate is above selected row area
             if (currentY < mRectSelectedRowArea.top) {
-                mChildRect.set(mRectEventsArea.left, currentY, mRectEventsArea.right,
+                mChildRowHeightRect.set(mRectEventsArea.left, currentY, mRectEventsArea.right,
                         currentY + mChannelRowHeight);
-                final int overlapValue = calculateYOverlapValue(mRectSelectedRowArea, mChildRect);
+                final int overlapValue = calculateYOverlapValue(mRectSelectedRowArea, mChildRowHeightRect);
                 //There is overlap between child and selection area
                 if (overlapValue > 0) {
-                    rowHeight =
-                            (mRectSelectedRowArea.top - mChildRect.top) + (int) Math
-                                    .ceil((float) mChannelRowHeightExpanded
-                                            * (
-                                            (float) overlapValue / (float) mChannelRowHeight));
+                    //Calculates row height based on current overlap value
+                    rowHeight = (mRectSelectedRowArea.top - mChildRowHeightRect.top) + (int) Math
+                            .ceil((float) mChannelRowHeightExpanded * ((float) overlapValue / (float)
+                                    mChannelRowHeight));
                 }
             }
             //Current Y coordinate is at the top of selection area
@@ -576,16 +603,12 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
             //Current Y coordinate is in the selected row area
             else if (currentY <= mRectSelectedRowArea.bottom) {
                 rowHeight = mChannelRowHeightExpanded + mChannelRowHeight - previousRowHeight;
-                //final Rect child = new Rect(mRectEventsArea.left, currentY, mRectEventsArea.right,
-                //   mRectEventsArea.bottom);
-                //final int overlapValue = calculateYOverlapValue(mRectSelectedRowArea, child);
-                //guideRowInformation
-                //.setRowHeight(overlapValue + (mChannelRowHeight - (int) Math.ceil((float) mChannelRowHeight * (
-                //(float) overlapValue / (float) mChannelRowHeightExpanded))));
-                //guideRowInformation.setRowPivot(GuideRowInformation.MOVE_BOTTOM);
-
             }
-        } else if (mScrollState == SCROLL_STATE_FAST_SCROLL) {
+        }
+        /**
+         * For fast scroll we just use already calculated row heights in previous layout pass
+         */
+        else if (mScrollState == SCROLL_STATE_FAST_SCROLL) {
             if (oldHeightOfTheRow != INVALID_POSITION) {
                 rowHeight = oldHeightOfTheRow;
             } else if (channelIndex == mExpandedChannelIndex) {
@@ -598,11 +621,11 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     }
 
     /**
-     * Get information about first position for desired channel
+     * Get information from adapter about first visible event position for desired channel
      *
      * @param scroll  Current X scroll
      * @param channel Desired channel
-     * @return Object containing information's about first visible child and its offset from left edge of the
+     * @return Object containing information's about first visible child and its offset from left edge of the guide
      */
     protected FirstPositionInfo getPositionAndOffsetForScrollValue(int scroll, int channel) {
         int sum = 0;
@@ -626,13 +649,15 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      * @param width        Width of the view
      * @param newHeight    New height of the view
      */
-    protected void resizeChildView(View viewToResize, int currentY, int width, int newHeight) {
+    protected void resizeChildView(View viewToResize, int currentY, int width, int newHeight, int
+            currentRowExpandedPercent) {
         LayoutParams params = (LayoutParams) viewToResize.getLayoutParams();
         if (params == null) {
             params = new LayoutParams(width, newHeight);
         } else {
             params.width = width;
             params.height = newHeight;
+            params.mCurrentResizePercentValue = currentRowExpandedPercent;
         }
         measureEventItemView(viewToResize, width, newHeight);
         viewToResize.layout(viewToResize.getLeft(), currentY, viewToResize.getLeft() + width,
@@ -718,6 +743,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         } else {
             params.width = width;
             params.height = height;
+            params.mCurrentResizePercentValue = height == mChannelRowHeightExpanded ? 100 : 0;
         }
         params.mChannelIndex = channelIndex;
         params.mEventIndex = eventIndex;
@@ -725,13 +751,13 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     }
 
     /**
-     * Find view that was touched.
+     * Find view at desired coordinates.
      *
      * @param touchX X coordinate of touch.
      * @param touchY Y coordinate of touch.
-     * @return Touched item or null if nothing was found.
+     * @return Desired view or null if nothing was found.
      */
-    private View getTouchedView(float touchX, float touchY) {
+    private View getViewAtCoordinates(float touchX, float touchY) {
         //If touched view is from time line section or from channel indicators section we ignore it
         if (mRectTimeLine.contains((int) touchX, (int) touchY) || mRectChannelIndicators
                 .contains((int) touchX, (int) touchY)) {
@@ -837,28 +863,13 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
                 int topVisiblePart = firstVisibleChild.getHeight() - topInvisiblePart;
                 int scrollBy = (topInvisiblePart <= topVisiblePart ?
                         -topInvisiblePart :
-                        topVisiblePart + mVerticalDivider);
+                        topVisiblePart + mVerticalDividerHeight);
                 if (scrollBy != 0) {
                     mSmoothScrollRunnable.startScrollBy(0, scrollBy);
                 }
                 return true;
             }
         }
-        //        else if (mScrollState == SCROLL_STATE_FAST_SCROLL) {
-        //            final View selectedChild = isItemAttachedToWindow(LAYOUT_TYPE_CHANNEL_INDICATOR, mSelectedItemPosition,
-        //                    INVALID_POSITION);
-        //            if (selectedChild != null) {
-        //                log("moveSelectedViewsToSelectionBounds SCROLL_STATE_FAST_SCROLL channel number="
-        //                        + ((LayoutParams) selectedChild
-        //                        .getLayoutParams()).mChannelIndex);
-        //                int middlePoint = mRectEventsArea.top + (mRectSelectedRowArea.bottom - mRectSelectedRowArea.top) / 2;
-        //                int childMiddlePoint = (selectedChild.getBottom() - selectedChild.getTop()) / 2;
-        //                middlePoint = middlePoint - childMiddlePoint;
-        //                if (middlePoint != 0) {
-        //                    mSmoothScrollRunnable.startScrollBy(0, middlePoint);
-        //                }
-        //            }
-        //        }
         return false;
     }
 
@@ -979,10 +990,6 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
             oldSelectedView.setSelected(false);
             oldViewRect = new Rect(oldSelectedView.getLeft(), oldSelectedView.getTop(), oldSelectedView.getRight(),
                     oldSelectedView.getBottom());
-            //            oldViewRect.left = oldSelectedView.getLeft();
-            //            oldViewRect.top = oldSelectedView.getTop();
-            //            oldViewRect.right = oldViewRect.left + oldSelectedView.getWidth();
-            //            oldViewRect.bottom = oldViewRect.top + oldSelectedView.getHeight();
         }
         mSelectedView = newSelectedView;
         if (oldViewRect != null) {
@@ -995,10 +1002,6 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         newSelectedView.setSelected(true);
         newViewRect = new Rect(newSelectedView.getLeft(), newSelectedView.getTop(), newSelectedView.getRight(),
                 newSelectedView.getBottom());
-        //        newViewRect.left = (int) newSelectedView.getLeft();
-        //        newViewRect.top = (int) newSelectedView.getTop();
-        //        newViewRect.right = newViewRect.left + newSelectedView.getWidth();
-        //        newViewRect.bottom = newViewRect.top + newSelectedView.getHeight();
         invalidate(newViewRect);
         fireOnSelected();
     }
@@ -1032,6 +1035,10 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
 
         public int mChannelIndex = INVALID_POSITION;
         public int mEventIndex = INVALID_POSITION;
+        /**
+         * Value that represents current size of view. If 0, view has small size, if 100, view has fully expanded size
+         */
+        public int mCurrentResizePercentValue;
 
         public LayoutParams(Context c, AttributeSet attrs) {
             super(c, attrs);
@@ -1102,54 +1109,52 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         private OnAnimationFinishedListener mOnAnimationFinishedListener;
         private int mDesiredChannelPosition;
 
+        /**
+         * Calculates Y coordinate to scroll to
+         *
+         * @param newChannelPosition Scroll to new channel position
+         * @return Calculated Y coordinate for new channel to be selected
+         */
         private int calculateNewYPosition(int newChannelPosition) {
             if (newChannelPosition == mSelectedItemPosition) {
                 return INVALID_POSITION;
             }
+            /**
+             * For normal scroll
+             */
             if (mScrollState == SCROLL_STATE_NORMAL) {
                 return (newChannelPosition - mNumberOfVisibleChannels / 2) * (mChannelRowHeight +
-                        mVerticalDivider);
-            } else if (mScrollState == SCROLL_STATE_FAST_SCROLL) {
-                if (mCurrentOffsetY % (mChannelRowHeight + mVerticalDivider) == 0) {
-
-                    int newY = mCurrentOffsetY + (newChannelPosition - mSelectedItemPosition) * (mChannelRowHeight +
-                            mVerticalDivider);
-
-                    log("calculateNewYPosition IF currentY=" + mCurrentOffsetY + ", newY=" + newY
-                            + ", newChannelPosition="
-                            + newChannelPosition);
-                    return newY;
+                        mVerticalDividerHeight);
+            }
+            /**
+             * For fast scroll we must recalculate offset to scroll to
+             */
+            else if (mScrollState == SCROLL_STATE_FAST_SCROLL) {
+                if (mCurrentOffsetY % (mChannelRowHeight + mVerticalDividerHeight) == 0) {
+                    return mCurrentOffsetY + (newChannelPosition - mSelectedItemPosition) * (mChannelRowHeight +
+                            mVerticalDividerHeight);
                 } else {
-                    int newY = (newChannelPosition - (mNumberOfVisibleChannels + BIG_CHANNEL_MULTIPLIER - 1) / 2) *
-                            (mChannelRowHeight +
-                                    mVerticalDivider);
-                    log("calculateNewYPosition currentY=" + mCurrentOffsetY + ", newY=" + newY + ", newChannelPosition="
-                            + newChannelPosition);
-                    return newY;
+                    return (newChannelPosition - (mNumberOfVisibleChannels + BIG_CHANNEL_MULTIPLIER - 1) / 2) *
+                            (mChannelRowHeight + mVerticalDividerHeight);
                 }
             }
             return INVALID_POSITION;
         }
 
+        /**
+         * Resumes already active fast scroll to new position
+         *
+         * @param difference Difference of current selection to new selection
+         */
         void resumeVerticalScroll(int difference) {
-            log("resumeVerticalScrollTo ENTERED~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ANIM "
-                    + "FINISHED= " + mScroll.isFinished());
-            //            if (mDesiredChannelPosition + difference != mSelectedItemPosition) {
             if (!mScroll.isFinished()) {
                 if (mDesiredChannelPosition >= mChannelItemCount - 1) {
                     return;
                 } else if (mDesiredChannelPosition <= 0) {
                     return;
                 }
-                log("resumeVerticalScrollTo ONE ELEMENT HEIGHT=" + (mChannelRowHeight +
-                        mVerticalDivider) + ", difference=" + difference + ", selectedPosition="
-                        + mSelectedItemPosition + ", mDesiredChannelPosition=" + mDesiredChannelPosition);
-
                 final int newY = mScroll.getFinalY() + difference *
-                        (mChannelRowHeight + mVerticalDivider);
-
-                log("resumeVerticalScrollTo mScroll.getFinalY()=" + mScroll.getFinalY() + ", NEW Y=" + newY);
-
+                        (mChannelRowHeight + mVerticalDividerHeight);
                 mScroll.setFinalY(newY);
                 mScroll.extendDuration(Math.abs(difference) *
                         SMOOTH_FAST_SCROLL_DURATION + (mScroll.getDuration() - mScroll.timePassed()));
@@ -1158,9 +1163,14 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
                 final int calculatedYCoordinate = calculateNewYPosition(mSelectedItemPosition + difference);
                 startScrollTo(mCurrentOffsetX, calculatedYCoordinate, SMOOTH_FAST_SCROLL_DURATION);
             }
-            //            }
         }
 
+        /**
+         * Starts vertical scroll to desired position
+         *
+         * @param newChannelPosition Desired position
+         * @param duration           Duration of scroll
+         */
         void startVerticalScrollToPosition(int newChannelPosition, int duration) {
             //TODO if new channel index is visible on screen do normal scroll, if it is invisible perform fast scroll
             this.mDesiredChannelPosition = newChannelPosition;
@@ -1434,5 +1444,4 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
             }
         }
     }
-
 }

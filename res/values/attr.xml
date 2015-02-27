@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <declare-styleable name="BaseGuideView">
-        <attr name="oneMinutePixelWidth" format="dimension"/>
-        <attr name="numberOfDaysToDisplay" format="integer"/>
         <attr name="numberOfChannelsToDisplay" format="integer"/>
         <attr name="verticalDividerHeight" format="dimension"/>
         <attr name="horizontalDividerHeight" format="dimension"/>

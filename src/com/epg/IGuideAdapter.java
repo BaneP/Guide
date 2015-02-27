@@ -4,6 +4,8 @@ import android.database.DataSetObserver;
 import android.view.View;
 import android.view.ViewGroup;
 
+import java.util.Calendar;
+
 /**
  * Created by bane on 4/02/15.
  */
@@ -40,14 +42,34 @@ public interface IGuideAdapter {
     int getEventsCount(int channel);
 
     /**
-     * Return width for desired channel event
+     * Return width for desired channel event. Width should already be calculated based on minute pixel size (getOneMinuteWidth())
      *
      * @param channel index
      * @param event   index
-     * @return Event width in minutes
+     * @return Calculated event width in pixels
      */
     int getEventWidth(int channel, int event);
 
+    /**
+     * Return width for one pixel
+     *
+     * @return Calculated one minute pixel size
+     */
+    int getOneMinuteWidth();
+
+    /**
+     * Returns start time of time line
+     *
+     * @return Start time of time line, its MILLISECONDS, SECONDS and MINUTES will be ignored
+     */
+    Calendar getStartTime();
+
+    /**
+     * Returns end time of time line
+     *
+     * @return End time of time line, its MILLISECONDS, SECONDS and MINUTES will be ignored
+     */
+    Calendar getEndTime();
 
     /**
      * Now event index of desired channel.

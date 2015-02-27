@@ -7,6 +7,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
 
+import java.util.Calendar;
 import java.util.Random;
 
 public class MyActivity extends Activity {
@@ -55,6 +56,36 @@ public class MyActivity extends Activity {
             }
             }
             return widths[event];
+        }
+
+        /**
+         * Return width for one pixel
+         *
+         * @return Calculated one minute pixel size
+         */
+        @Override
+        public int getOneMinuteWidth() {
+            return 0;
+        }
+
+        /**
+         * Returns start time of time line
+         *
+         * @return Start time of time line, it should have 0 MILLISECONDS, SECONDS and MINUTES
+         */
+        @Override
+        public Calendar getStartTime() {
+            return null;
+        }
+
+        /**
+         * Returns end time of time line
+         *
+         * @return End time of time line, it should have 0 MILLISECONDS, SECONDS and MINUTES
+         */
+        @Override
+        public Calendar getEndTime() {
+            return null;
         }
 
         @Override

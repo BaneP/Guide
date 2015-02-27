@@ -65,10 +65,6 @@ public class GuideView extends BaseGuideView {
 
     @Override
     public boolean onKeyUp(int keyCode, KeyEvent event) {
-        //        if (mOnLongPressScrollListener != null && mLongPressStarted) {
-        //            mOnLongPressListener.onLongPressStopped();
-        //            mLongPressStarted = false;
-        //        }
         if (isInLongPress) {
             isInLongPress = false;
         }
@@ -83,8 +79,6 @@ public class GuideView extends BaseGuideView {
         final boolean isLongPress = event.isLongPress();
         switch (keyCode) {
         case KeyEvent.KEYCODE_DPAD_UP: {
-            log("ON KEY DOWN IS LONG PRESS=" + isLongPress + ", mSelectedItemPosition=" + mSelectedItemPosition + ", "
-                    + "CURRENT TIME=" + System.currentTimeMillis());
             if (event.isLongPress()) {
                 isInLongPress = true;
             }
@@ -103,9 +97,6 @@ public class GuideView extends BaseGuideView {
             return true;
         }
         case KeyEvent.KEYCODE_DPAD_DOWN: {
-            log("ON KEY DOWN IS LONG PRESS=" + isLongPress + ", mSelectedItemPosition=" + mSelectedItemPosition
-                    + ", CURRENT TIME=" + System
-                    .currentTimeMillis());
             if (event.isLongPress()) {
                 isInLongPress = true;
             }
@@ -139,7 +130,6 @@ public class GuideView extends BaseGuideView {
 
     @Override
     protected void layoutChannelIndicators() {
-        //log("layoutChannelIndicators ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~");
         if (mOverlapChannelIndicatorsView.getLayoutParams() == null) {
             addChildView(LAYOUT_TYPE_OVERLAP_VIEW, mOverlapChannelIndicatorsView, mRectChannelIndicators.left,
                     0, mRectChannelIndicators.right - mRectChannelIndicators.left,
@@ -156,11 +146,12 @@ public class GuideView extends BaseGuideView {
         int currentRowHeight = 0;
         // Calculate first child top invisible part
         if (mFirstChannelPosition == mExpandedChannelIndex) {
-            int invisible = mExpandedChannelIndex * (mChannelRowHeight + mVerticalDivider);
+            int invisible = mExpandedChannelIndex * (mChannelRowHeight + mVerticalDividerHeight);
             currentY -= (mCurrentOffsetY - invisible);
         } else {
-            currentY -= mCurrentOffsetY % (mChannelRowHeight + mVerticalDivider);
+            currentY -= mCurrentOffsetY % (mChannelRowHeight + mVerticalDividerHeight);
         }
+        int resizedPercent = INVALID_POSITION;
         //Loop through channels
         for (int i = mFirstChannelPosition; i < channelsCount; i++) {
             //Get view at the desired position, or null if view do not exist
@@ -178,8 +169,11 @@ public class GuideView extends BaseGuideView {
                 bringChildToFront(attached);
                 //If event height is changed we must resize its view dimension
                 if (attached.getHeight() != currentRowHeight) {
+                    if (resizedPercent == INVALID_POSITION) {
+                        resizedPercent = 100 * (currentRowHeight - mChannelRowHeight) / mChannelRowHeightExpanded;
+                    }
                     resizeChildView(attached, currentY, mRectChannelIndicators.right - mRectChannelIndicators.left,
-                            currentRowHeight);
+                            currentRowHeight, resizedPercent);
                 }
                 //If current Y coordinate and top position of the view are misplaced we must move a view to desired Y value
                 else if (currentY != attached.getTop()) {
@@ -188,13 +182,13 @@ public class GuideView extends BaseGuideView {
             }
 
             // If child row is out of screen
-            if (currentY + currentRowHeight + mVerticalDivider > getHeight()) {
+            if (currentY + currentRowHeight + mVerticalDividerHeight > getHeight()) {
                 mLastChannelPosition = i;
                 break;
             }
             //New child row is inside screen so we draw it
             else {
-                currentY += currentRowHeight + mVerticalDivider;
+                currentY += currentRowHeight + mVerticalDividerHeight;
             }
         }
         if (mLastChannelPosition == INVALID_POSITION) {
@@ -205,7 +199,6 @@ public class GuideView extends BaseGuideView {
 
     @Override
     protected void layoutTimeLine() {
-        //log("layoutTimeLine ###################################");
         if (mOverlapTimeLineView.getLayoutParams() == null) {
             addChildView(LAYOUT_TYPE_OVERLAP_VIEW, mOverlapTimeLineView, 0,
                     mRectTimeLine.top, mRectTimeLine.right,
@@ -225,21 +218,19 @@ public class GuideView extends BaseGuideView {
         final int channelsCount = mChannelItemCount;
         mLastChannelPosition = INVALID_POSITION;
         calculateFirstChannelPosition();
-        log("layoutEvents FIRST CHANNEL POSITION=" + mFirstChannelPosition);
 
         if (mEventsAreaMiddlePoint == INVALID_POSITION) {
             mEventsAreaMiddlePoint = mRectEventsArea.top + (mRectEventsArea.bottom - mRectEventsArea.top) / 2;
         }
-        //log("layoutEvents mFirstChannelPosition=" + mFirstChannelPosition);
         FirstPositionInfo firstPositionInfo;
         int currentRowHeight = 0;
         mSelectedItemPosition = mFirstChannelPosition;
         // Calculate first child top invisible part
         if (mFirstChannelPosition == mExpandedChannelIndex) {
-            int invisible = mExpandedChannelIndex * (mChannelRowHeight + mVerticalDivider);
+            int invisible = mExpandedChannelIndex * (mChannelRowHeight + mVerticalDividerHeight);
             currentY -= (mCurrentOffsetY - invisible);
         } else {
-            currentY -= mCurrentOffsetY % (mChannelRowHeight + mVerticalDivider);
+            currentY -= mCurrentOffsetY % (mChannelRowHeight + mVerticalDividerHeight);
         }
         //Loop through channels
         for (int i = mFirstChannelPosition; i < channelsCount; i++) {
@@ -268,19 +259,19 @@ public class GuideView extends BaseGuideView {
             // Move X coordinate to left to support drawing of invisible part of event view
             currentX -= firstPositionInfo.getFirstChildInvisiblePart();
             if (firstPositionInfo.getFirstChildIndex() > 0) {
-                currentX += mHorizontalDivider;
+                currentX += mHorizontalDividerWidth;
             }
             //Layout all event views for channel
             layoutEventsRow(i, currentX, currentY, firstPositionInfo.getFirstChildIndex(), currentRowHeight);
 
             // If child row is out of screen
-            if (currentY + currentRowHeight + mVerticalDivider > getHeight()) {
+            if (currentY + currentRowHeight + mVerticalDividerHeight > getHeight()) {
                 mLastChannelPosition = i;
                 break;
             }
             //New child row is inside screen so we draw it
             else {
-                currentY += currentRowHeight + mVerticalDivider;
+                currentY += currentRowHeight + mVerticalDividerHeight;
                 currentX = mRectEventsArea.left;
             }
         }
@@ -302,10 +293,11 @@ public class GuideView extends BaseGuideView {
             int currentRowHeight) {
         // Get number of events
         final int eventCount = getEventsCount(channelIndex);
+        int resizedPercent = INVALID_POSITION;
         for (int j = firstChildIndex; j < eventCount; j++) {
 
             final int eventWidth = mAdapter.getEventWidth(channelIndex, j)
-                    - (j == 0 ? 0 : mHorizontalDivider);
+                    - (j == 0 ? 0 : mHorizontalDividerWidth);
             final View attached = isItemAttachedToWindow(LAYOUT_TYPE_EVENTS, channelIndex, j);
             if (attached == null) {
                 View child = mAdapter.getEventView(channelIndex, j,
@@ -315,7 +307,10 @@ public class GuideView extends BaseGuideView {
             }
             //If event height is changed we must resize its view dimension
             else if (attached.getHeight() != currentRowHeight) {
-                resizeChildView(attached, currentY, eventWidth, currentRowHeight);
+                if (resizedPercent == INVALID_POSITION) {
+                    resizedPercent = 100 * (currentRowHeight - mChannelRowHeight) / mChannelRowHeightExpanded;
+                }
+                resizeChildView(attached, currentY, eventWidth, currentRowHeight, resizedPercent);
             }
             //If current Y coordinate and top position of the view are misplaced we must move a view to desired Y value
             else if (currentY != attached.getTop()) {
@@ -326,7 +321,7 @@ public class GuideView extends BaseGuideView {
             if (currentX + eventWidth >= getWidth()) {
                 break;
             } else {
-                currentX += eventWidth + mHorizontalDivider;
+                currentX += eventWidth + mHorizontalDividerWidth;
             }
         }
     }

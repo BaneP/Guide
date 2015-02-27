@@ -10,9 +10,9 @@
           class="com.epg.GuideView"
           android:id="@+id/guideView"
           android:layout_gravity="center_horizontal"
-          epg:oneMinutePixelWidth="5dp"
           epg:horizontalDividerHeight="3dp"
           epg:verticalDividerHeight="3dp"
+          epg:selector="@drawable/ic_launcher"
         />
 </LinearLayout>
 
