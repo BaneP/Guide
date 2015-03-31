@@ -42,12 +42,12 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     /**
      * Duration of smooth scroll animation while executing fast scroll
      */
-    public static final int SMOOTH_FAST_SCROLL_DURATION = 170;
+    public static final int SMOOTH_FAST_SCROLL_DURATION = 150;
 
     /**
      * Duration of smooth fast scroll end animation
      */
-    public static final int SMOOTH_FAST_SCROLL_END_DURATION = 200;
+    public static final int SMOOTH_FAST_SCROLL_END_DURATION = 170;
     /**
      * Refresh interval of smooth scroll animations
      */
@@ -149,6 +149,11 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      * Object for guide scrolling horizontally and vertically.
      */
     Scroller mScroll;
+
+    /**
+     * Listener for fast scroll end animation
+     */
+    Animation.AnimationListener mFastScrollEndAnimationListener;
 
     /**
      * Runnable that smooth scrolls list
@@ -257,6 +262,23 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         // Initialize scroller
         mScroll = new Scroller(context, new LinearInterpolator());
         mSmoothScrollRunnable = new SmoothScrollRunnable();
+        mFastScrollEndAnimationListener = new Animation.AnimationListener() {
+            @Override
+            public void onAnimationStart(Animation animation) {
+                mScrollState = SCROLL_STATE_FAST_SCROLL_END;
+            }
+
+            @Override
+            public void onAnimationEnd(Animation animation) {
+                changeScrollState(SCROLL_STATE_NORMAL,
+                        INVALID_POSITION);
+            }
+
+            @Override
+            public void onAnimationRepeat(Animation animation) {
+
+            }
+        };
         // Initialize recycler
         mRecycler = new Recycler();
         // Used for calculating child row height
@@ -1151,26 +1173,37 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         switch (mScrollState) {
         case SCROLL_STATE_NORMAL: {
             if (newScrollState == SCROLL_STATE_FAST_SCROLL) {
-                int difference = keyCode == KeyEvent.KEYCODE_DPAD_DOWN ? 1 : -1;
-                NormalToFastScrollFinishedListener animFinishedListener = new NormalToFastScrollFinishedListener(
-                        difference);
-                if (mScroll.isFinished()) {
-                    animFinishedListener.animationFinished();
-                } else if (activeFinishListener == null
-                        || (activeFinishListener != null
-                        && !(activeFinishListener instanceof NormalToFastScrollFinishedListener))) {
-                    mSmoothScrollRunnable
-                            .setOnAnimationFinishedListener(animFinishedListener);
+                int difference = 0;
+                if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+                    difference = 1;
+                } else if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+                    difference = -1;
+                }
+                //If fast scroll is starting with UP/DOWN key
+                if (difference != 0) {
+                    NormalToFastScrollFinishedListener animFinishedListener = new NormalToFastScrollFinishedListener(
+                            difference);
+                    if (mScroll.isFinished()) {
+                        animFinishedListener.animationFinished();
+                    } else if (activeFinishListener == null
+                            || (activeFinishListener != null
+                            && !(activeFinishListener instanceof NormalToFastScrollFinishedListener))) {
+                        mSmoothScrollRunnable
+                                .setOnAnimationFinishedListener(animFinishedListener);
+                    }
+                }
+                //If fast scroll is starting programmatically
+                else {
+                    mScrollState = SCROLL_STATE_FAST_SCROLL;
                 }
             }
             break;
         }
         case SCROLL_STATE_FAST_SCROLL: {
-            // TODO
             if (newScrollState == SCROLL_STATE_NORMAL) {
                 mScrollState = SCROLL_STATE_NORMAL;
             } else if (newScrollState == SCROLL_STATE_FAST_SCROLL_END) {
-                FastToFastlScrollEndFinishedListener animFinishedListener = new FastToFastlScrollEndFinishedListener();
+                FastToFastScrollEndFinishedListener animFinishedListener = new FastToFastScrollEndFinishedListener();
                 if (mScroll.isFinished()) {
                     animFinishedListener.animationFinished();
                 } else {
@@ -1191,8 +1224,15 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         }
     }
 
+    /**
+     * Internal listener for end of scroll runnable.
+     */
     interface OnAnimationFinishedListener {
-        void animationFinished();
+        /**
+         * @return TRUE if new listener is set (so listener instance must be alive), FALSE otherwise (listener
+         * instance can become NULL)
+         */
+        boolean animationFinished();
     }
 
     /**
@@ -1207,9 +1247,10 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         }
 
         @Override
-        public void animationFinished() {
+        public boolean animationFinished() {
             mScrollState = SCROLL_STATE_FAST_SCROLL;
             mSmoothScrollRunnable.resumeVerticalScroll(mDifference);
+            return false;
         }
     }
 
@@ -1228,65 +1269,64 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         }
 
         @Override
-        public void animationFinished() {
+        public boolean animationFinished() {
             mSmoothScrollRunnable.startVerticalScrollToPosition(
                     mDesiredChannelPosition, mScrollDuration);
+            return false;
         }
     }
 
     /**
      * Class that wait end of normal scroll and switches to fast scroll
      */
-    private class FastToFastlScrollEndFinishedListener implements
+    private class FastToFastScrollEndFinishedListener implements
             OnAnimationFinishedListener {
 
-        FastToFastlScrollEndFinishedListener() {
+        FastToFastScrollEndFinishedListener() {
         }
 
         @Override
-        public void animationFinished() {
-            // postDelayed(new Runnable() {
-            // @Override
-            // public void run() {
-            log("FastToFastlScrollEndFinishedListener mSelectedItemPosition="
-                    + mSelectedItemPosition);
-            View selected = isItemAttachedToWindow(
-                    LAYOUT_TYPE_CHANNEL_INDICATOR, mSelectedItemPosition,
+        public boolean animationFinished() {
+            return fastScrollEnd();
+        }
+    }
+
+    /**
+     * Create animation that returns normal scroll from fast scroll
+     */
+    private boolean fastScrollEnd() {
+        View selected = isItemAttachedToWindow(
+                LAYOUT_TYPE_CHANNEL_INDICATOR, mSelectedItemPosition,
+                INVALID_POSITION);
+        if (selected != null) {
+            // Expanded view can be null if it is out of screen
+            final View expanded = isItemAttachedToWindow(
+                    LAYOUT_TYPE_CHANNEL_INDICATOR, mExpandedChannelIndex,
                     INVALID_POSITION);
-            if (selected != null) {
-                // Expanded view can be null if it is out of screen
-                final View expanded = isItemAttachedToWindow(
-                        LAYOUT_TYPE_CHANNEL_INDICATOR, mExpandedChannelIndex,
-                        INVALID_POSITION);
-                log("Start resize animation expanded=" + expanded);
+
+            if (mSelectedItemPosition == mExpandedChannelIndex && expanded != null
+                    && mScrollState == SCROLL_STATE_FAST_SCROLL) {
+                if (expanded.getTop() == mRectSelectedRowArea.top) {
+                    changeScrollState(SCROLL_STATE_NORMAL, 0);
+                    return false;
+                }
+                int difference = 1;
+                if (expanded.getTop() > mRectSelectedRowArea.top) {
+                    difference = -1;
+                }
+                mSmoothScrollRunnable.resumeVerticalScroll(difference);
+                return true;
+            } else {
                 ResizeAnimation animation = new ResizeAnimation(
                         BaseGuideView.this, selected, expanded,
                         mChannelRowHeight, mChannelRowHeightExpanded);
                 animation.setInterpolator(new AccelerateInterpolator());
-                animation.setDuration(5000);// SMOOTH_FAST_SCROLL_END_DURATION);
-                animation
-                        .setAnimationListener(new Animation.AnimationListener() {
-                            @Override
-                            public void onAnimationStart(Animation animation) {
-                                mScrollState = SCROLL_STATE_FAST_SCROLL_END;
-                            }
-
-                            @Override
-                            public void onAnimationEnd(Animation animation) {
-                                changeScrollState(SCROLL_STATE_NORMAL,
-                                        INVALID_POSITION);
-                            }
-
-                            @Override
-                            public void onAnimationRepeat(Animation animation) {
-
-                            }
-                        });
+                animation.setDuration(SMOOTH_FAST_SCROLL_END_DURATION);
+                animation.setAnimationListener(mFastScrollEndAnimationListener);
                 startAnimation(animation);
             }
-            // }
-            // }, 2000);
         }
+        return false;
     }
 
     /**
@@ -1344,6 +1384,21 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
                 } else if (mDesiredChannelPosition <= 0) {
                     return;
                 }
+                /**
+                 * If difference is in opposite direction of current scroll
+                 */
+                if ((mScroll.getCurrY() < mScroll.getFinalY() && difference < 0) || (mScroll.getCurrY() > mScroll
+                        .getFinalY() && difference > 0)) {
+                    mScroll.forceFinished(true);
+                    mScroll.abortAnimation();
+                    final int calculatedYCoordinate = calculateNewYPosition(mSelectedItemPosition + difference);
+                    if (calculatedYCoordinate != INVALID_POSITION) {
+                        startScrollTo(mCurrentOffsetX, calculatedYCoordinate,
+                                SMOOTH_FAST_SCROLL_DURATION);
+                    }
+                    return;
+                }
+
                 final int newY = mScroll.getFinalY() + difference
                         * (mChannelRowHeight + mVerticalDividerHeight);
                 mScroll.setFinalY(newY);
@@ -1366,18 +1421,28 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
          * @param duration           Duration of scroll
          */
         void startVerticalScrollToPosition(int newChannelPosition, int duration) {
-            // TODO if new channel index is visible on screen do normal scroll,
             // if it is invisible perform fast scroll
             if (isScrollRunning()) {
-                setOnAnimationFinishedListener(new NormalToNormalScrollFinishedListener(
-                        newChannelPosition, duration));
+                if (mScrollState == SCROLL_STATE_NORMAL) {
+                    setOnAnimationFinishedListener(new NormalToNormalScrollFinishedListener(
+                            newChannelPosition, duration));
+                }
             } else {
                 this.mDesiredChannelPosition = newChannelPosition;
-                final int calculatedYCoordinate = calculateNewYPosition(newChannelPosition);
-                log("startVerticalScrollToPosition, newChannelPosition=" + newChannelPosition
-                        + ", calculatedYCoordinate "
-                        + "= " + calculatedYCoordinate);
+                int calculatedYCoordinate = calculateNewYPosition(newChannelPosition);
                 if (calculatedYCoordinate != INVALID_POSITION) {
+                    /**
+                     * If desired channel is off screen, fast scroll is used
+                     */
+                    int diff = Math.abs(newChannelPosition - mSelectedItemPosition);
+                    if (diff > mNumberOfVisibleChannels / 2) {
+                        changeScrollState(SCROLL_STATE_FAST_SCROLL, INVALID_POSITION);
+                        calculatedYCoordinate +=
+                                (calculatedYCoordinate > mCurrentOffsetY ? 1 : -1) * (mChannelRowHeight +
+                                        mVerticalDividerHeight);
+                    } else {
+                        duration = diff * SMOOTH_SCROLL_DURATION;
+                    }
                     startScrollTo(mCurrentOffsetX, calculatedYCoordinate,
                             duration);
                 }
@@ -1420,15 +1485,18 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
                 log("scroller is finished, done with smooth scroll");
                 mDesiredChannelPosition = mSelectedItemPosition;
                 if (mOnAnimationFinishedListener != null) {
-                    mOnAnimationFinishedListener.animationFinished();
-                    mOnAnimationFinishedListener = null;
+                    if (!mOnAnimationFinishedListener.animationFinished()) {
+                        mOnAnimationFinishedListener = null;
+                    }
+                } else if (mScrollState == SCROLL_STATE_FAST_SCROLL) {
+                    fastScrollEnd();
                 }
                 return;
             }
             boolean animationRunning = mScroll.computeScrollOffset();
             int x = mScroll.getCurrX();
             int y = mScroll.getCurrY();
-            log("SmoothScrollRunnable RUNNNNN  y=" + y);
+            //log("SmoothScrollRunnable RUNNNNN  y=" + y);
             int diffX = x - mCurrentOffsetX;
             int diffY = y - mCurrentOffsetY;
             if (diffX != 0 || diffY != 0) {

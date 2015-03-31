@@ -78,14 +78,16 @@ public class GuideView extends BaseGuideView {
         boolean handled = false;
         switch (keyCode) {
         case KeyEvent.KEYCODE_DPAD_UP: {
-            if (isInLongPress) {
+            log("ON KEY UP, KEYCODE_DPAD_UP, mScrollState=" + mScrollState + ", isInLongPress=" + isInLongPress);
+            if (mScrollState == SCROLL_STATE_FAST_SCROLL) {
                 changeScrollState(SCROLL_STATE_FAST_SCROLL_END, keyCode);
             }
             handled = true;
             break;
         }
         case KeyEvent.KEYCODE_DPAD_DOWN: {
-            if (isInLongPress) {
+            log("ON KEY UP, KEYCODE_DPAD_DOWN, mScrollState=" + mScrollState + ", isInLongPress=" + isInLongPress);
+            if (mScrollState == SCROLL_STATE_FAST_SCROLL) {
                 changeScrollState(SCROLL_STATE_FAST_SCROLL_END, keyCode);
             }
             handled = true;
@@ -109,6 +111,7 @@ public class GuideView extends BaseGuideView {
                 isInLongPress = true;
             }
             long now = System.currentTimeMillis();
+            log("ON KEY DOWN, KEYCODE_DPAD_UP, mScrollState=" + mScrollState + ", isInLongPress=" + isInLongPress);
             /**
              * Long press
              */
@@ -135,6 +138,7 @@ public class GuideView extends BaseGuideView {
                 isInLongPress = true;
             }
             long now = System.currentTimeMillis();
+            log("ON KEY DOWN, KEYCODE_DPAD_DOWN, mScrollState=" + mScrollState + ", isInLongPress=" + isInLongPress);
             /**
              * Long press
              */
@@ -169,6 +173,16 @@ public class GuideView extends BaseGuideView {
         }
         }
         return super.onKeyDown(keyCode, event);
+    }
+
+    /**
+     * Smoothly scroll to position
+     *
+     * @param position New position to scroll to
+     */
+    public void smoothScrollToPosition(int position) {
+        int diff = Math.abs(mSelectedItemPosition - position);
+        mSmoothScrollRunnable.startVerticalScrollToPosition(position, (int) (diff * SMOOTH_FAST_SCROLL_DURATION * 0.6));
     }
 
     @Override
@@ -207,7 +221,7 @@ public class GuideView extends BaseGuideView {
     /**
      * Calculates resized percent of channel row
      *
-     * @param currentRow Height Height of current row
+     * @param currentRowHeight Height Height of current row
      * @return Integer in the range [0 - 100]
      */
     private int calculateResizedPercentOfView(int currentRowHeight) {
@@ -220,7 +234,7 @@ public class GuideView extends BaseGuideView {
         mRows.clear();
         int currentRowHeight = 0;
         int resizedPercent = 0;
-        log("calculateRowPositions, mCurrentOffsetY=" + mCurrentOffsetY);
+        //log("calculateRowPositions, mCurrentOffsetY=" + mCurrentOffsetY);
         // For fast scroll end we must recalculate heights different way
         if (mScrollState == SCROLL_STATE_FAST_SCROLL_END) {
             int i;
@@ -351,7 +365,7 @@ public class GuideView extends BaseGuideView {
                 }
             }
         }
-        log("calculateRowPositions(), ROWS=" + mRows.toString());
+        //log("calculateRowPositions(), ROWS=" + mRows.toString());
     }
 
     /**
@@ -527,7 +541,7 @@ public class GuideView extends BaseGuideView {
 	 */
 
 	/*
-	 * private void layoutEventsNormal() { //Starting points for drawing events
+     * private void layoutEventsNormal() { //Starting points for drawing events
 	 * int currentX = mRectEventsArea.left; int currentY = mRectEventsArea.top;
 	 * 
 	 * final int channelsCount = mChannelItemCount; mLastChannelPosition =
@@ -575,7 +589,7 @@ public class GuideView extends BaseGuideView {
 	 */
 
 	/*
-	 * private void layoutChannelIndicatorsNormal() { //Starting points for
+     * private void layoutChannelIndicatorsNormal() { //Starting points for
 	 * drawing events int currentY = mRectChannelIndicators.top;
 	 * 
 	 * final int channelsCount = mChannelItemCount; mLastChannelPosition =
@@ -625,8 +639,8 @@ public class GuideView extends BaseGuideView {
      * @param layoutType
      *            Type of layout
      */
-	/*
-	 * private void layoutViewsFastScrollEnd(int layoutType) { int i; int
+    /*
+     * private void layoutViewsFastScrollEnd(int layoutType) { int i; int
 	 * currentYUp = 0, currentYDown = 0; int currentX = 0; int currentRowHeight
 	 * = 0; int resizedPercent = 0; FirstPositionInfo firstPositionInfo;
 	 * 
@@ -716,8 +730,8 @@ public class GuideView extends BaseGuideView {
      * @param layoutType
      *            Type of layout pass
      */
-	/*
-	 * private void layoutViewsNormal(int layoutType) { // Starting points for
+    /*
+     * private void layoutViewsNormal(int layoutType) { // Starting points for
 	 * drawing events int currentX = mRectEventsArea.left; int currentY =
 	 * layoutType == LAYOUT_TYPE_CHANNEL_INDICATOR ? mRectChannelIndicators.top
 	 * : mRectEventsArea.top;

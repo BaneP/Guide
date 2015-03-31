@@ -1,6 +1,5 @@
 package com.epg;
 
-import android.util.Log;
 import android.view.View;
 import android.view.animation.Animation;
 import android.view.animation.Transformation;
@@ -28,7 +27,7 @@ class ResizeAnimation extends Animation {
     protected void applyTransformation(float interpolatedTime, Transformation t) {
         int newHeight = (int) (mNormalHeight + (mExpandedHeight - mNormalHeight)
                 * interpolatedTime);
-        Log.d("ResizeAnimation", "newHeight=" + newHeight);
+        //Log.d("ResizeAnimation", "newHeight=" + newHeight);
         mSelectedView.getLayoutParams().height = newHeight;
         if (mExpandedView != null) {
             mExpandedView.getLayoutParams().height = mExpandedHeight
