@@ -220,6 +220,7 @@ public class GuideView extends BaseGuideView {
         mRows.clear();
         int currentRowHeight = 0;
         int resizedPercent = 0;
+        log("calculateRowPositions, mCurrentOffsetY=" + mCurrentOffsetY);
         // For fast scroll end we must recalculate heights different way
         if (mScrollState == SCROLL_STATE_FAST_SCROLL_END) {
             int i;
@@ -289,6 +290,7 @@ public class GuideView extends BaseGuideView {
         else {
             int currentY = mRectChannelIndicators.top;
             final int channelsCount = mChannelItemCount;
+
             mLastChannelPosition = INVALID_POSITION;
             mSelectedItemPosition = mFirstChannelPosition;
 
@@ -306,8 +308,7 @@ public class GuideView extends BaseGuideView {
                 // Current offset Y - invisible part of guide
                 currentY -= (mCurrentOffsetY - (mExpandedChannelIndex * (mChannelRowHeight + mVerticalDividerHeight)));
             } else {
-                currentY -= mCurrentOffsetY
-                        % (mChannelRowHeight + mVerticalDividerHeight);
+                currentY -= mCurrentOffsetY % (mChannelRowHeight + mVerticalDividerHeight);
             }
 
             // Loop through channels
@@ -324,25 +325,21 @@ public class GuideView extends BaseGuideView {
                                 : attached.getHeight(), i);
 
                 resizedPercent = calculateResizedPercentOfView(currentRowHeight);
-                log("mChannelRowHeight=" + mChannelRowHeight
-                        + ", mChannelRowHeightExpanded="
-                        + mChannelRowHeightExpanded);
 
                 // Calculate selected channel position
                 if (currentY <= mEventsAreaMiddlePoint
                         && currentRowHeight + currentY >= mEventsAreaMiddlePoint) {
                     mSelectedItemPosition = i;
-                    log("calculateRowPositions(), mSelectedItemPosition="
-                            + mSelectedItemPosition);
                     // Save index of expanded channel
                     if (mScrollState != SCROLL_STATE_FAST_SCROLL) {
                         mExpandedChannelIndex = mSelectedItemPosition;
                     }
                 }
 
-                mRows.add(new GuideRowInfo(i, currentY, currentRowHeight,
-                        resizedPercent));
-
+                if (i >= 0) {
+                    mRows.add(new GuideRowInfo(i, currentY, currentRowHeight,
+                            resizedPercent));
+                }
                 // If child row is out of screen
                 if (currentY + currentRowHeight + mVerticalDividerHeight >= getHeight()) {
                     mLastChannelPosition = i;
@@ -516,8 +513,8 @@ public class GuideView extends BaseGuideView {
      * @param currentY
      * @param currentRowHeight
      */
-	/*
-	 * private void resizeEventsRow(final int channelIndex, int firstChildIndex,
+    /*
+     * private void resizeEventsRow(final int channelIndex, int firstChildIndex,
 	 * int currentY, int currentRowHeight) { // Get number of events final int
 	 * eventCount = getEventsCount(channelIndex); final int resizedPercent =
 	 * calculateResizedPercentOfView(currentRowHeight); for (int j =

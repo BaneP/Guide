@@ -348,6 +348,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
             // layout pass.
             if (getMeasuredHeight() > 0) {
                 mTotalHeight = calculateTotalHeight();
+                mCurrentOffsetY = getTopOffsetBounds();
             } else {
                 mTotalHeight = 0;
             }
@@ -422,6 +423,9 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         // Calculate total scroll value if adapter is setted
         if (mTotalHeight == 0 && mAdapter != null) {
             mTotalHeight = calculateTotalHeight();
+        }
+        if (mCurrentOffsetY == 0) {
+            mCurrentOffsetY = getTopOffsetBounds();
         }
     }
 
@@ -541,8 +545,9 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      * @return Calculated maximum scroll value
      */
     private int calculateTotalHeight() {
-        return (mChannelItemCount) * mChannelRowHeight + mVerticalDividerHeight
-                * (mChannelItemCount) + mChannelRowHeightExpanded;
+        return mChannelItemCount * mChannelRowHeight + mVerticalDividerHeight
+                * mChannelItemCount + mChannelRowHeightExpanded +
+                (mNumberOfVisibleChannels / 2) * (mChannelRowHeight + mVerticalDividerHeight);
     }
 
     /**
@@ -868,9 +873,9 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     private void offsetBy(float offsetDeltaX, float offsetDeltaY) {
         // adjust offset values
         final int adjustedOffsetDeltaX = adjustOffsetDelta(mCurrentOffsetX,
-                offsetDeltaX, getRightOffsetBounds());
+                offsetDeltaX, getRightOffsetBounds(), false);
         final int adjustedOffsetDeltaY = adjustOffsetDelta(mCurrentOffsetY,
-                offsetDeltaY, getBottomOffsetBounds());
+                offsetDeltaY, getBottomOffsetBounds(), true);
         // offset views
         // First offset event views
         int childCount = mRecycler.mActiveEventsViews.size();
@@ -904,7 +909,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     private void fling(int velocityX, int velocityY) {
         mScroll.forceFinished(true);
         mScroll.fling(mCurrentOffsetX, mCurrentOffsetY, velocityX, velocityY,
-                0, getRightOffsetBounds(), 0, getBottomOffsetBounds());
+                0, getRightOffsetBounds(), getTopOffsetBounds(), getBottomOffsetBounds());
         invalidate();
     }
 
@@ -941,7 +946,8 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      */
     private int getBottomOffsetBounds() {
         return computeVerticalScrollRange() - getHeight() + getPaddingBottom()
-                + getPaddingTop();
+                + getPaddingTop() + (mScrollState == SCROLL_STATE_FAST_SCROLL ? (mChannelRowHeight
+                + mVerticalDividerHeight) : 0);
     }
 
     /**
@@ -951,6 +957,18 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     private int getRightOffsetBounds() {
         return computeHorizontalScrollRange() - getWidth() + getPaddingLeft()
                 + getPaddingRight();
+    }
+
+    /**
+     * @return Returns Y top limit
+     */
+    private int getTopOffsetBounds() {
+        if (mScrollState == SCROLL_STATE_FAST_SCROLL) {
+            return -mNumberOfVisibleChannels / 2 * (mChannelRowHeight + mVerticalDividerHeight) - (mChannelRowHeight
+                    + mVerticalDividerHeight);
+        } else {
+            return -mNumberOfVisibleChannels / 2 * (mChannelRowHeight + mVerticalDividerHeight);
+        }
     }
 
     /**
@@ -964,7 +982,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      * @return Adjusted offset delta.
      */
     private int adjustOffsetDelta(int currentOffset, float offsetDelta,
-            int maxAllowedOffset) {
+            int maxAllowedOffset, boolean isForY) {
         // if view content size is smaller than the view size, offset is 0, i.e.
         // we can't offset the content
         if (maxAllowedOffset < 0) {
@@ -972,8 +990,14 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         }
 
         // limit offset for top and left edges
-        if (currentOffset + offsetDelta <= 0) {
-            return -currentOffset;
+        if (isForY) {
+            if (currentOffset + offsetDelta <= getTopOffsetBounds()) {
+                return -currentOffset + getTopOffsetBounds();
+            }
+        } else {
+            if (currentOffset + offsetDelta <= 0) {
+                return -currentOffset;
+            }
         }
 
         // limit offset for bottom and right edges
@@ -1350,6 +1374,9 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
             } else {
                 this.mDesiredChannelPosition = newChannelPosition;
                 final int calculatedYCoordinate = calculateNewYPosition(newChannelPosition);
+                log("startVerticalScrollToPosition, newChannelPosition=" + newChannelPosition
+                        + ", calculatedYCoordinate "
+                        + "= " + calculatedYCoordinate);
                 if (calculatedYCoordinate != INVALID_POSITION) {
                     startScrollTo(mCurrentOffsetX, calculatedYCoordinate,
                             duration);
@@ -1379,7 +1406,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         }
 
         void startScrollTo(int toX, int toY, int duration) {
-            if (toY > getBottomOffsetBounds() || toY < 0
+            if (toY > getBottomOffsetBounds() || toY < getTopOffsetBounds()
                     || toX > getRightOffsetBounds() || toX < 0) {
                 return;
             }
