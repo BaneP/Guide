@@ -387,8 +387,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      */
     @Override
     public void setSelection(int channelPosition) {
-        // TODO
-
+        setSelection(channelPosition, INVALID_POSITION);
     }
 
     /**
@@ -400,6 +399,12 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     @Override
     public void setSelection(int channelPosition, int eventPosition) {
         // TODO
+        mScrollState = SCROLL_STATE_NORMAL;
+        mCurrentOffsetY = getYScrollCoordinateForPosition(channelPosition);
+        if (eventPosition > INVALID_POSITION) {
+            //TODO
+        }
+        update();
     }
 
     @Override
@@ -969,7 +974,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     private int getBottomOffsetBounds() {
         return computeVerticalScrollRange() - getHeight() + getPaddingBottom()
                 + getPaddingTop() + (mScrollState == SCROLL_STATE_FAST_SCROLL ? (mChannelRowHeight
-                + mVerticalDividerHeight) : 0);
+                + mVerticalDividerHeight) * BIG_CHANNEL_MULTIPLIER / 2 : 0);
     }
 
     /**
@@ -991,6 +996,15 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         } else {
             return -mNumberOfVisibleChannels / 2 * (mChannelRowHeight + mVerticalDividerHeight);
         }
+    }
+
+    /**
+     * @param desiredPosition
+     * @return Returns desired Y scroll coordinate for desired position and SCROLL_STATE_NORMAL
+     */
+    protected int getYScrollCoordinateForPosition(int desiredPosition) {
+        return (desiredPosition - mNumberOfVisibleChannels / 2)
+                * (mChannelRowHeight + mVerticalDividerHeight);
     }
 
     /**
@@ -1181,6 +1195,12 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
                 }
                 //If fast scroll is starting with UP/DOWN key
                 if (difference != 0) {
+                    //Check if long press is pressed on up or down limits
+                    //Bug fix for long press on limits (first or last channel)
+                    if ((difference == 1 && mSelectedItemPosition > mChannelItemCount - 2) || (difference == -1 &&
+                            mSelectedItemPosition < 1)) {
+                        return;
+                    }
                     NormalToFastScrollFinishedListener animFinishedListener = new NormalToFastScrollFinishedListener(
                             difference);
                     if (mScroll.isFinished()) {
@@ -1351,8 +1371,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
              * For normal scroll
              */
             if (mScrollState == SCROLL_STATE_NORMAL) {
-                return (newChannelPosition - mNumberOfVisibleChannels / 2)
-                        * (mChannelRowHeight + mVerticalDividerHeight);
+                return getYScrollCoordinateForPosition(newChannelPosition);
             }
             /**
              * For fast scroll we must recalculate offset to scroll to
