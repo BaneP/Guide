@@ -65,7 +65,7 @@ public class MyActivity extends Activity {
          */
         @Override
         public int getOneMinuteWidth() {
-            return 0;
+            return 2;
         }
 
         /**
@@ -95,7 +95,7 @@ public class MyActivity extends Activity {
 
         @Override
         public boolean hasRegularData(int channel, int event) {
-            return false;
+            return true;
         }
 
         @Override

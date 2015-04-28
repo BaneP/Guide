@@ -32,21 +32,26 @@ public abstract class GuideAdapterView<T extends BaseGuideAdapter> extends ViewG
     /**
      * First visible channel position
      */
-    int mFirstChannelPosition = INVALID_POSITION;
+    int mFirstItemPosition = INVALID_POSITION;
     /**
      * Last visible channel position
      */
-    int mLastChannelPosition = INVALID_POSITION;
+    int mLastItemPosition = INVALID_POSITION;
 
     /**
      * The number of channel items in the current adapter.
      */
-    int mChannelItemCount = 0;
+    int mChannelsCount = 0;
 
     /**
      * Position of selected item
      */
     int mSelectedItemPosition;
+
+    /**
+     * Position of selected event
+     */
+    int mSelectedEventItemPosition;
 
     /**
      * Currently selected view
@@ -178,21 +183,21 @@ public abstract class GuideAdapterView<T extends BaseGuideAdapter> extends ViewG
      * @return Returns first visible channel.
      */
     public int getFirstChannelPosition() {
-        return mFirstChannelPosition;
+        return mFirstItemPosition;
     }
 
     /**
      * @return Returns last visible channel.
      */
     public int getLastChannelPosition() {
-        return mLastChannelPosition;
+        return mLastItemPosition;
     }
 
     /**
      * @return Returns number of visible channels.
      */
     public int getNumberOfVisibleChannels() {
-        return mLastChannelPosition - mFirstChannelPosition;
+        return mLastItemPosition - mFirstItemPosition;
     }
 
     /**
@@ -283,7 +288,7 @@ public abstract class GuideAdapterView<T extends BaseGuideAdapter> extends ViewG
      * larger than the number of visible views.)
      */
     public int getChannelsCount() {
-        return mChannelItemCount;
+        return mChannelsCount;
     }
 
     /**

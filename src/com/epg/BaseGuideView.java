@@ -28,10 +28,10 @@ import java.util.ArrayList;
 public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     static final int NUMBER_OF_MINUTES_IN_DAY = 1440;
     public static final int BIG_CHANNEL_MULTIPLIER = 3;
+    public static final int DEFAULT_ONE_MINUTE_WIDTH = 1;
     /**
      * Types of layout pass
      */
-    static final int LAYOUT_TYPE_TIME_LINE = 0;
     static final int LAYOUT_TYPE_CHANNEL_INDICATOR = 1;
     static final int LAYOUT_TYPE_EVENTS = 2;
     static final int LAYOUT_TYPE_OVERLAP_VIEW = 3;
@@ -48,6 +48,11 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      * Duration of smooth fast scroll end animation
      */
     public static final int SMOOTH_FAST_SCROLL_END_DURATION = 170;
+
+    /**
+     * Duration of smooth left/right scroll animation
+     */
+    public static final int SMOOTH_LEFT_RIGHT_DURATION = 300;
     /**
      * Refresh interval of smooth scroll animations
      */
@@ -59,6 +64,11 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     static final int SCROLL_STATE_NORMAL = 0;
     static final int SCROLL_STATE_FAST_SCROLL = 1;
     static final int SCROLL_STATE_FAST_SCROLL_END = 2;
+
+    /**
+     * Where should selected event position be relative to events area.
+     */
+    static final float DEFAULT_SELECTION_EVENT_POSITION = 0.2f;
 
     /**
      * Active scrolling state
@@ -79,7 +89,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     /**
      * Index of expanded channel, used while in fast scroll state
      */
-    int mExpandedChannelIndex = INVALID_POSITION;
+    int mExpandedItemIndex = INVALID_POSITION;
 
     /**
      * Calculated sections of guide window
@@ -118,6 +128,12 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      */
     protected int mNumberOfVisibleChannels;
     /**
+     * Position of where on screen will be selected event
+     */
+    protected SelectionType mSelectionType;
+    protected float mSelectionRelativePosition;
+    protected int mSelectionAbsolutePosition;
+    /**
      * Selector drawable
      */
     protected Drawable mSelector;
@@ -153,7 +169,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     /**
      * Listener for fast scroll end animation
      */
-    Animation.AnimationListener mFastScrollEndAnimationListener;
+    private Animation.AnimationListener mFastScrollEndAnimationListener;
 
     /**
      * Runnable that smooth scrolls list
@@ -180,7 +196,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         @Override
         public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX,
                 float velocityY) {
-            // We will use fast scroll for vertical fling
+            // We will use fast scroll for horizontal fling
             fling((int) -velocityX, 0);// (int) -velocityY);
             return true;
         }
@@ -203,8 +219,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
             }
             LayoutParams lp = (LayoutParams) mTouchedView.getLayoutParams();
             if (lp != null) {
-                // performItemClick(mTouchedView, lp.mChannelIndex,
-                // lp.mEventIndex);
+                performItemClick(mTouchedView);
             }
             selectNextView(mTouchedView);
             mTouchedView = null;
@@ -248,6 +263,14 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
                         .getDrawable(R.styleable.BaseGuideView_timeLineProgressIndicator);
                 mTimeLineTextFormat = a
                         .getNonResourceString(R.styleable.BaseGuideView_timeLineTextFormat);
+                int sel = a.getInt(R.styleable.BaseGuideView_selectionType, SelectionType.FIXED_ON_SCREEN.getValue());
+                if (sel == SelectionType.FIXED_ON_SCREEN.getValue()) {
+                    mSelectionType = SelectionType.FIXED_ON_SCREEN;
+                } else if (sel == SelectionType.NOT_FIXED_ON_SCREEN.getValue()) {
+                    mSelectionType = SelectionType.NOT_FIXED_ON_SCREEN;
+                }
+                mSelectionRelativePosition = a.getFloat(R.styleable.BaseGuideView_selectionFixedValue,
+                        DEFAULT_SELECTION_EVENT_POSITION);
             } finally {
                 a.recycle();
             }
@@ -262,6 +285,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         // Initialize scroller
         mScroll = new Scroller(context, new LinearInterpolator());
         mSmoothScrollRunnable = new SmoothScrollRunnable();
+        //Initialize fast scroll end animation listener
         mFastScrollEndAnimationListener = new Animation.AnimationListener() {
             @Override
             public void onAnimationStart(Animation animation) {
@@ -276,7 +300,6 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
 
             @Override
             public void onAnimationRepeat(Animation animation) {
-
             }
         };
         // Initialize recycler
@@ -287,7 +310,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         setBackgroundColor(Color.BLACK);
         setFocusable(true);
 
-        //
+        //TODO ERASE THIS, JUST FOR TESTING
         mTimeList = new ColorDrawable(0x22EE0000);// RED
         mChannels = new ColorDrawable(0x2200EE00);// GREEN
         mEvents = new ColorDrawable(0x220000EE);// BLUE
@@ -321,7 +344,6 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     public boolean onTouchEvent(MotionEvent event) {
         // Workaround for SimpleOnGestureListener do not handle motion UP
         boolean detectedUp = event.getAction() == MotionEvent.ACTION_UP;
-
         mGestureDetector.onTouchEvent(event);
         if (detectedUp) {
             onUp(event);
@@ -350,19 +372,23 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         mCurrentOffsetX = 0;
         mCurrentOffsetY = 0;
         mSelectedView = null;
-        mFirstChannelPosition = 0;
-        mLastChannelPosition = INVALID_POSITION;
+        mFirstItemPosition = 0;
+        mLastItemPosition = INVALID_POSITION;
+        mSelectedEventItemPosition = INVALID_POSITION;
         removeAllViewsInLayout();
         mRecycler.clearAll();
 
         // Initialize some elements from adapter
         if (mAdapter != null) {
-            mChannelItemCount = mAdapter.getChannelsCount();
+            mChannelsCount = mAdapter.getChannelsCount();
             // Get minute pixel width
             mOneMinuteWidth = mAdapter.getOneMinuteWidth();
+            if (mOneMinuteWidth < 1) {
+                mOneMinuteWidth = DEFAULT_ONE_MINUTE_WIDTH;
+            }
             // Calculate total grid width
             // TODO change to calculated
-            mTotalWidth = 5205;// mOneMinutePixelWidth *
+            mTotalWidth = mOneMinuteWidth * 5205;// mOneMinutePixelWidth *
             // NUMBER_OF_MINUTES_IN_DAY*
             // mNumberOfDaysToDisplayData;
 
@@ -447,6 +473,10 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         mRectSelectedRowArea.set(mChannelRowHeight, selectedTop, viewWidth,
                 selectedTop + mChannelRowHeightExpanded);
 
+        if (mSelectionType == SelectionType.FIXED_ON_SCREEN) {
+            mSelectionAbsolutePosition = (int) ((mRectEventsArea.right - mRectEventsArea.left)
+                    * mSelectionRelativePosition);
+        }
         // Calculate total scroll value if adapter is setted
         if (mTotalHeight == 0 && mAdapter != null) {
             mTotalHeight = calculateTotalHeight();
@@ -454,6 +484,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         if (mCurrentOffsetY == 0) {
             mCurrentOffsetY = getTopOffsetBounds();
         }
+
     }
 
     @Override
@@ -475,12 +506,19 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
             mSelectionRow.setBounds(mRectSelectedRowArea);
             mSelectionRow.draw(canvas);
         }
+        log("DISPATCH DRAW " + mSelectedView);
         // Draws selector on top of Guide view
         if (mSelectedView != null) {
-            mSelectorRect.left = mSelectedView.getLeft();
-            mSelectorRect.top = mSelectedView.getTop();
-            mSelectorRect.right = mSelectedView.getRight();
-            mSelectorRect.bottom = mSelectedView.getBottom();
+            mSelectorRect.left = mSelectedView.getLeft() < mRectChannelIndicators.right ?
+                    mRectChannelIndicators.right :
+                    mSelectedView.getLeft();
+            mSelectorRect.right = mSelectedView.getRight() < mRectChannelIndicators.right ?
+                    mRectChannelIndicators.right :
+                    mSelectedView.getRight();
+            mSelectorRect.top =
+                    mSelectedView.getTop() < mRectTimeLine.bottom ? mRectTimeLine.bottom : mSelectedView.getTop();
+            mSelectorRect.bottom =
+                    mSelectedView.getBottom() < mRectTimeLine.bottom ? mRectTimeLine.bottom : mSelectedView.getBottom();
             mSelector.setBounds(mSelectorRect);
             mSelector.draw(canvas);
         }
@@ -548,7 +586,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     protected abstract void calculateRowPositions();
 
     /**
-     * Updates screen while selection is moving or scrolling
+     * Updates screen while selection is moving or scrolling, this is used for drawing every frame
      */
     void update() {
         mRecycler.removeInvisibleItems();
@@ -561,6 +599,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      * Reposition and redraw items. You may want to call this method after the
      * data provider changes.
      */
+    //TODO use this in data set observer
     public void redrawItems() {
         mRecycler.moveAllViewsToRecycle();
         removeAllViewsInLayout();
@@ -572,8 +611,8 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      * @return Calculated maximum scroll value
      */
     private int calculateTotalHeight() {
-        return mChannelItemCount * mChannelRowHeight + mVerticalDividerHeight
-                * mChannelItemCount + mChannelRowHeightExpanded +
+        return mChannelsCount * mChannelRowHeight + mVerticalDividerHeight
+                * mChannelsCount + mChannelRowHeightExpanded +
                 (mNumberOfVisibleChannels / 2) * (mChannelRowHeight + mVerticalDividerHeight);
     }
 
@@ -586,33 +625,33 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
          */
         if (mScrollState == SCROLL_STATE_FAST_SCROLL) {
             // Expanded item is on the screen and it is not first visible
-            if (mFirstChannelPosition < mExpandedChannelIndex) {
-                mFirstChannelPosition = mCurrentOffsetY
+            if (mFirstItemPosition < mExpandedItemIndex) {
+                mFirstItemPosition = mCurrentOffsetY
                         / (mChannelRowHeight + mVerticalDividerHeight);
             }
             // Expanded was first visible on the screen, check if it is still
             // visible
-            else if (mFirstChannelPosition == mExpandedChannelIndex) {
+            else if (mFirstItemPosition == mExpandedItemIndex) {
                 // Calculate sum before expanded
-                int sum = mExpandedChannelIndex
+                int sum = mExpandedItemIndex
                         * (mChannelRowHeight + mVerticalDividerHeight);
                 // Expanded is moved down so every invisible channel is normal
                 // size
                 if (sum >= mCurrentOffsetY) {
-                    mFirstChannelPosition = mCurrentOffsetY
+                    mFirstItemPosition = mCurrentOffsetY
                             / (mChannelRowHeight + mVerticalDividerHeight);
                     return;
                 }
                 sum += (mChannelRowHeightExpanded + mVerticalDividerHeight);
                 // Expanded is scrolled out of visible screen
                 if (sum < mCurrentOffsetY) {
-                    mFirstChannelPosition = mExpandedChannelIndex + 1;
+                    mFirstItemPosition = mExpandedItemIndex + 1;
                 }
             }
             // Expanded is not visible, it is above visible area
             else {
                 // We must take into account expanded item
-                mFirstChannelPosition = mCurrentOffsetY
+                mFirstItemPosition = mCurrentOffsetY
                         / (mChannelRowHeight + mVerticalDividerHeight)
                         - (BIG_CHANNEL_MULTIPLIER - 1);
             }
@@ -621,7 +660,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
          * For normal scroll first visible position is easily calculated
          */
         else {
-            mFirstChannelPosition = mCurrentOffsetY
+            mFirstItemPosition = mCurrentOffsetY
                     / (mChannelRowHeight + mVerticalDividerHeight);
         }
     }
@@ -632,10 +671,8 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      * @return Calculated overlap value
      */
     private int calculateYOverlapValue(Rect rect1, Rect rect2) {
-        return Math.max(
-                0,
-                Math.min(rect1.bottom, rect2.bottom)
-                        - Math.max(rect1.top, rect2.top));
+        return Math.max(0, Math.min(rect1.bottom, rect2.bottom)
+                - Math.max(rect1.top, rect2.top));
     }
 
     /**
@@ -687,16 +724,13 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         else if (mScrollState == SCROLL_STATE_FAST_SCROLL) {
             if (oldHeightOfTheRow != INVALID_POSITION) {
                 rowHeight = oldHeightOfTheRow;
-            } else if (channelIndex == mExpandedChannelIndex) {
+            } else if (channelIndex == mExpandedItemIndex) {
                 rowHeight = mChannelRowHeightExpanded;
             }
         } else if (mScrollState == SCROLL_STATE_FAST_SCROLL_END) {
-            // TODO
-            // if (channelIndex == mSelectedItemPosition) {
             if (oldHeightOfTheRow != INVALID_POSITION) {
                 rowHeight = oldHeightOfTheRow;
             }
-            // }
         }
         return rowHeight;
     }
@@ -716,7 +750,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         final int count = mAdapter.getEventsCount(channel);
         int width = 0;
         for (int i = 0; i < count; i++) {
-            width = mAdapter.getEventWidth(channel, i);
+            width = mAdapter.getEventWidth(channel, i) * mOneMinuteWidth;
             sum += width;
             if (sum > scroll) {
                 return new FirstPositionInfo(i, width - (sum - scroll));
@@ -771,10 +805,6 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
             addViewToLayout(child, width, height, channelIndex, eventIndex);
             measureEventItemView(child, width, height);
             child.layout(left, top, left + width, top + height);
-            break;
-        }
-        case LAYOUT_TYPE_TIME_LINE: {
-            // TODO
             break;
         }
         case LAYOUT_TYPE_CHANNEL_INDICATOR: {
@@ -919,8 +949,6 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
             mRecycler.mActiveChannelIndicatorViews.get(i).offsetTopAndBottom(
                     -adjustedOffsetDeltaY);
         }
-        // TODO offset time line views
-
         // update state
         mCurrentOffsetX += adjustedOffsetDeltaX;
         mCurrentOffsetY += adjustedOffsetDeltaY;
@@ -949,7 +977,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     protected boolean moveSelectedViewsToSelectionBounds() {
         if (mScrollState == SCROLL_STATE_NORMAL) {
             final View firstVisibleChild = isItemAttachedToWindow(
-                    LAYOUT_TYPE_CHANNEL_INDICATOR, mFirstChannelPosition,
+                    LAYOUT_TYPE_CHANNEL_INDICATOR, mFirstItemPosition,
                     INVALID_POSITION);
             if (firstVisibleChild != null) {
                 int topInvisiblePart = mRectEventsArea.top
@@ -1082,10 +1110,6 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
             }
             break;
         }
-        case LAYOUT_TYPE_TIME_LINE: {
-            // TODO what to do here?
-            break;
-        }
         case LAYOUT_TYPE_EVENTS: {
             for (View v : mRecycler.mActiveEventsViews) {
                 LayoutParams lp = (LayoutParams) v.getLayoutParams();
@@ -1097,42 +1121,162 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
             break;
         }
         }
-
         return null;
     }
 
     /**
-     * Make new view selected.
+     * @param channelIndex
+     * @return Returns last visible event for desired channel
+     */
+    protected View getLastVisibleEventView(int channelIndex) {
+        View lastVisible = null;
+        int lastEventIndex = 0;
+        for (View v : mRecycler.mActiveEventsViews) {
+            LayoutParams lp = (LayoutParams) v.getLayoutParams();
+            if (lp.mChannelIndex == channelIndex
+                    && lp.mEventIndex > lastEventIndex) {
+                lastEventIndex = lp.mEventIndex;
+                lastVisible = v;
+            }
+        }
+        return lastVisible;
+    }
+
+    /**
+     * @param channelIndex
+     * @return Returns first visible event for desired channel
+     */
+    protected View getFirstVisibleEventView(int channelIndex) {
+        View firstVisible = null;
+        int firstEventIndex = Integer.MAX_VALUE;
+        for (View v : mRecycler.mActiveEventsViews) {
+            LayoutParams lp = (LayoutParams) v.getLayoutParams();
+            if (lp.mChannelIndex == channelIndex
+                    && lp.mEventIndex < firstEventIndex) {
+                firstEventIndex = lp.mEventIndex;
+                firstVisible = v;
+            }
+        }
+        return firstVisible;
+    }
+
+    /**
+     * Select events with LEFT/RIGHT keys
+     *
+     * @param keyCode KeyEvent.KEYCODE_DPAD_LEFT or KeyEvent.KEYCODE_DPAD_RIGHT
+     * @return TRUE if key press was handled, FALSE otherwise
+     */
+    protected boolean selectRightLeftView(int keyCode) {
+        log("selectRightLeftView, mSelectedEventItemPosition=" + mSelectedEventItemPosition);
+        //Vertical scroll can not be interrupted by LEFT/RIGHT keys.
+        if (mScrollState != SCROLL_STATE_NORMAL || (mCurrentOffsetY % (mChannelRowHeight + mVerticalDividerHeight)
+                != 0)) {
+            return true;
+        }
+        int desiredEventIndex = mSelectedEventItemPosition + (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : -1);
+        if (desiredEventIndex >= mAdapter.getEventsCount(mSelectedItemPosition) || desiredEventIndex <= -1) {
+            return false;
+        }
+        final View nextView = isItemAttachedToWindow(LAYOUT_TYPE_EVENTS,
+                mSelectedItemPosition, desiredEventIndex);
+        int eventPosition = getEventPositionOnScreen(nextView, desiredEventIndex);
+        if (mSelectionType == SelectionType.FIXED_ON_SCREEN) {
+            if (nextView != null) {
+                selectNextView(nextView);
+            } else {
+                mSelectedView = null;
+                mSelectedEventItemPosition = desiredEventIndex;
+            }
+
+            int scrollBy = eventPosition - mSelectionAbsolutePosition;
+            if (mCurrentOffsetX + scrollBy < 0) {
+                scrollBy = -mCurrentOffsetX;
+            }
+            log("selectRightLeftView, desiredEventIndex=" + desiredEventIndex + ", nextView=" + nextView + ", "
+                    + "eventPosition=" + eventPosition + ", mCurrentOffsetX=" + mCurrentOffsetX + ", scrollBy="
+                    + scrollBy + ", mSelectionAbsolutePosition=" + mSelectionAbsolutePosition);
+            mSmoothScrollRunnable
+                    .startScrollBy(scrollBy, 0, SMOOTH_LEFT_RIGHT_DURATION);
+        } else {
+            //TODO Implement non fixed scroll
+        }
+        return true;
+    }
+
+    /**
+     * @param nextView          Event view (NULL if it is not displayed on the screen)
+     * @param desiredEventIndex Event index
+     * @return Returns current absolute event position on screen
+     */
+    private int getEventPositionOnScreen(View nextView, int desiredEventIndex) {
+        if (nextView != null) {
+            return nextView.getLeft();
+        } else {
+            View firstLast = null;
+            LayoutParams params = null;
+            int desiredLeft = 0;
+            if (desiredEventIndex > mSelectedEventItemPosition) {
+                firstLast = getLastVisibleEventView(mSelectedItemPosition);
+                params = (LayoutParams) firstLast.getLayoutParams();
+                desiredLeft = firstLast.getRight();
+                for (int i = params.mEventIndex + 1; i < desiredEventIndex; i++) {
+                    desiredLeft += mAdapter.getEventWidth(mSelectedItemPosition, i) * mOneMinuteWidth;
+                }
+            } else {
+                firstLast = getFirstVisibleEventView(mSelectedItemPosition);
+                params = (LayoutParams) firstLast.getLayoutParams();
+                desiredLeft = firstLast.getLeft();
+                log("getEventPositionOnScreen desiredLeft=" + desiredLeft + ", firstLast.getLeft()=" + firstLast
+                        .getLeft());
+                for (int i = params.mEventIndex - 1; i >= desiredEventIndex; i--) {
+                    log("getEventPositionOnScreen event width=" + (mAdapter.getEventWidth(mSelectedItemPosition, i) *
+                            mOneMinuteWidth) +
+                            ","
+                            + " for " + i);
+                    desiredLeft -= mAdapter.getEventWidth(mSelectedItemPosition, i) * mOneMinuteWidth;
+                    log("getEventPositionOnScreen desiredLeft=" + desiredLeft + ", after " + i);
+                }
+            }
+            return desiredLeft;
+        }
+    }
+
+    /**
+     * Make new view selected. If desired view is not regular data (empty space) it can not be selected.
      *
      * @param newSelectedView New view that is selected
      */
     protected void selectNextView(View newSelectedView) {
-        // TODO try this
         final View oldSelectedView = mSelectedView;
         if (oldSelectedView == null && newSelectedView == null) {
             return;
         }
-        Rect oldViewRect = null, newViewRect;
+
         if (oldSelectedView != null) {
             oldSelectedView.setSelected(false);
-            oldViewRect = new Rect(oldSelectedView.getLeft(),
-                    oldSelectedView.getTop(), oldSelectedView.getRight(),
-                    oldSelectedView.getBottom());
         }
-        mSelectedView = newSelectedView;
-        if (oldViewRect != null) {
-            invalidate(oldViewRect);
-        }
+
         if (newSelectedView == null) {
+            mSelectedView = null;
             fireOnSelected();
+            invalidate();
             return;
         }
+        //If view represents empty space in guide
+        LayoutParams params = (LayoutParams) newSelectedView.getLayoutParams();
+        if (!mAdapter.hasRegularData(params.mChannelIndex, params.mEventIndex)) {
+            mSelectedView = null;
+            fireOnSelected();
+            invalidate();
+            return;
+        }
+
+        mSelectedView = newSelectedView;
+        mSelectedEventItemPosition = ((LayoutParams) mSelectedView.getLayoutParams()).mEventIndex;
+        log("selectNextView, mSelectedEventItemPosition=" + mSelectedEventItemPosition);
         newSelectedView.setSelected(true);
-        newViewRect = new Rect(newSelectedView.getLeft(),
-                newSelectedView.getTop(), newSelectedView.getRight(),
-                newSelectedView.getBottom());
-        invalidate(newViewRect);
         fireOnSelected();
+        invalidate();
     }
 
     @Override
@@ -1197,7 +1341,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
                 if (difference != 0) {
                     //Check if long press is pressed on up or down limits
                     //Bug fix for long press on limits (first or last channel)
-                    if ((difference == 1 && mSelectedItemPosition > mChannelItemCount - 2) || (difference == -1 &&
+                    if ((difference == 1 && mSelectedItemPosition > mChannelsCount - 2) || (difference == -1 &&
                             mSelectedItemPosition < 1)) {
                         return;
                     }
@@ -1321,10 +1465,10 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         if (selected != null) {
             // Expanded view can be null if it is out of screen
             final View expanded = isItemAttachedToWindow(
-                    LAYOUT_TYPE_CHANNEL_INDICATOR, mExpandedChannelIndex,
+                    LAYOUT_TYPE_CHANNEL_INDICATOR, mExpandedItemIndex,
                     INVALID_POSITION);
 
-            if (mSelectedItemPosition == mExpandedChannelIndex && expanded != null
+            if (mSelectedItemPosition == mExpandedItemIndex && expanded != null
                     && mScrollState == SCROLL_STATE_FAST_SCROLL) {
                 if (expanded.getTop() == mRectSelectedRowArea.top) {
                     changeScrollState(SCROLL_STATE_NORMAL, 0);
@@ -1398,7 +1542,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
          */
         void resumeVerticalScroll(int difference) {
             if (!mScroll.isFinished()) {
-                if (mDesiredChannelPosition >= mChannelItemCount - 1) {
+                if (mDesiredChannelPosition >= mChannelsCount - 1) {
                     return;
                 } else if (mDesiredChannelPosition <= 0) {
                     return;
@@ -1439,12 +1583,13 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
          * @param newChannelPosition Desired position
          * @param duration           Duration of scroll
          */
-        void startVerticalScrollToPosition(int newChannelPosition, int duration) {
+        boolean startVerticalScrollToPosition(int newChannelPosition, int duration) {
             // if it is invisible perform fast scroll
             if (isScrollRunning()) {
                 if (mScrollState == SCROLL_STATE_NORMAL) {
                     setOnAnimationFinishedListener(new NormalToNormalScrollFinishedListener(
                             newChannelPosition, duration));
+                    return true;
                 }
             } else {
                 this.mDesiredChannelPosition = newChannelPosition;
@@ -1462,17 +1607,18 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
                     } else {
                         duration = diff * SMOOTH_SCROLL_DURATION;
                     }
-                    startScrollTo(mCurrentOffsetX, calculatedYCoordinate,
+                    return startScrollTo(mCurrentOffsetX, calculatedYCoordinate,
                             duration);
                 }
             }
+            return false;
         }
 
-        void startScrollBy(int byX, int byY) {
-            startScrollBy(byX, byY, SMOOTH_SCROLL_DURATION);
+        boolean startScrollBy(int byX, int byY) {
+            return startScrollBy(byX, byY, SMOOTH_SCROLL_DURATION);
         }
 
-        void startScrollBy(int byX, int byY, int duration) {
+        boolean startScrollBy(int byX, int byY, int duration) {
             log("SmoothScrollRunnable startScrollBy, byX=" + byX + ", byY="
                     + byY);
             // Dont start scroll if difference is 0
@@ -1482,19 +1628,21 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
                 mScroll.startScroll(mCurrentOffsetX, mCurrentOffsetY, byX, byY,
                         duration);
                 BaseGuideView.this.postOnAnimation(this);
+                return true;
             }
+            return false;
         }
 
-        void startScrollTo(int toX, int toY) {
-            startScrollTo(toX, toY, SMOOTH_SCROLL_DURATION);
+        boolean startScrollTo(int toX, int toY) {
+            return startScrollTo(toX, toY, SMOOTH_SCROLL_DURATION);
         }
 
-        void startScrollTo(int toX, int toY, int duration) {
+        boolean startScrollTo(int toX, int toY, int duration) {
             if (toY > getBottomOffsetBounds() || toY < getTopOffsetBounds()
                     || toX > getRightOffsetBounds() || toX < 0) {
-                return;
+                return false;
             }
-            startScrollBy(toX - mCurrentOffsetX, toY - mCurrentOffsetY,
+            return startScrollBy(toX - mCurrentOffsetX, toY - mCurrentOffsetY,
                     duration);
         }
 
