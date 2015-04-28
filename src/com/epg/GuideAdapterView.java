@@ -158,6 +158,9 @@ public abstract class GuideAdapterView<T extends BaseGuideAdapter> extends ViewG
         return mOnItemSelectedListener;
     }
 
+    /**
+     * Fire on selected listener
+     */
     void fireOnSelected() {
         if (mOnItemSelectedListener == null) {
             return;

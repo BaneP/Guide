@@ -506,7 +506,6 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
             mSelectionRow.setBounds(mRectSelectedRowArea);
             mSelectionRow.draw(canvas);
         }
-        log("DISPATCH DRAW " + mSelectedView);
         // Draws selector on top of Guide view
         if (mSelectedView != null) {
             mSelectorRect.left = mSelectedView.getLeft() < mRectChannelIndicators.right ?
@@ -1167,7 +1166,6 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      * @return TRUE if key press was handled, FALSE otherwise
      */
     protected boolean selectRightLeftView(int keyCode) {
-        log("selectRightLeftView, mSelectedEventItemPosition=" + mSelectedEventItemPosition);
         //Vertical scroll can not be interrupted by LEFT/RIGHT keys.
         if (mScrollState != SCROLL_STATE_NORMAL || (mCurrentOffsetY % (mChannelRowHeight + mVerticalDividerHeight)
                 != 0)) {
@@ -1192,11 +1190,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
             if (mCurrentOffsetX + scrollBy < 0) {
                 scrollBy = -mCurrentOffsetX;
             }
-            log("selectRightLeftView, desiredEventIndex=" + desiredEventIndex + ", nextView=" + nextView + ", "
-                    + "eventPosition=" + eventPosition + ", mCurrentOffsetX=" + mCurrentOffsetX + ", scrollBy="
-                    + scrollBy + ", mSelectionAbsolutePosition=" + mSelectionAbsolutePosition);
-            mSmoothScrollRunnable
-                    .startScrollBy(scrollBy, 0, SMOOTH_LEFT_RIGHT_DURATION);
+            mSmoothScrollRunnable.startScrollBy(scrollBy, 0, SMOOTH_LEFT_RIGHT_DURATION);
         } else {
             //TODO Implement non fixed scroll
         }
@@ -1226,15 +1220,8 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
                 firstLast = getFirstVisibleEventView(mSelectedItemPosition);
                 params = (LayoutParams) firstLast.getLayoutParams();
                 desiredLeft = firstLast.getLeft();
-                log("getEventPositionOnScreen desiredLeft=" + desiredLeft + ", firstLast.getLeft()=" + firstLast
-                        .getLeft());
                 for (int i = params.mEventIndex - 1; i >= desiredEventIndex; i--) {
-                    log("getEventPositionOnScreen event width=" + (mAdapter.getEventWidth(mSelectedItemPosition, i) *
-                            mOneMinuteWidth) +
-                            ","
-                            + " for " + i);
                     desiredLeft -= mAdapter.getEventWidth(mSelectedItemPosition, i) * mOneMinuteWidth;
-                    log("getEventPositionOnScreen desiredLeft=" + desiredLeft + ", after " + i);
                 }
             }
             return desiredLeft;
@@ -1273,10 +1260,22 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
 
         mSelectedView = newSelectedView;
         mSelectedEventItemPosition = ((LayoutParams) mSelectedView.getLayoutParams()).mEventIndex;
-        log("selectNextView, mSelectedEventItemPosition=" + mSelectedEventItemPosition);
         newSelectedView.setSelected(true);
         fireOnSelected();
         invalidate();
+    }
+
+    /**
+     * Fire on long press state change
+     */
+    void fireOnLongPressScrollStateChanged() {
+        if (mOnLongPressScrollListener != null) {
+            if(mScrollState==SCROLL_STATE_NORMAL){
+                mOnLongPressScrollListener.onLongPressScrollStopped();
+            }else if(mScrollState == SCROLL_STATE_FAST_SCROLL){
+                mOnLongPressScrollListener.onLongPressScrollStarted();
+            }
+        }
     }
 
     @Override
@@ -1359,6 +1358,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
                 //If fast scroll is starting programmatically
                 else {
                     mScrollState = SCROLL_STATE_FAST_SCROLL;
+                    fireOnLongPressScrollStateChanged();
                 }
             }
             break;
@@ -1366,6 +1366,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         case SCROLL_STATE_FAST_SCROLL: {
             if (newScrollState == SCROLL_STATE_NORMAL) {
                 mScrollState = SCROLL_STATE_NORMAL;
+                fireOnLongPressScrollStateChanged();
             } else if (newScrollState == SCROLL_STATE_FAST_SCROLL_END) {
                 FastToFastScrollEndFinishedListener animFinishedListener = new FastToFastScrollEndFinishedListener();
                 if (mScroll.isFinished()) {
@@ -1382,6 +1383,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
                 mCurrentOffsetY = (mSelectedItemPosition - mNumberOfVisibleChannels / 2)
                         * (mChannelRowHeight + mVerticalDividerHeight);
                 mScrollState = SCROLL_STATE_NORMAL;
+                fireOnLongPressScrollStateChanged();
             }
             break;
         }
@@ -1413,6 +1415,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         @Override
         public boolean animationFinished() {
             mScrollState = SCROLL_STATE_FAST_SCROLL;
+            fireOnLongPressScrollStateChanged();
             mSmoothScrollRunnable.resumeVerticalScroll(mDifference);
             return false;
         }

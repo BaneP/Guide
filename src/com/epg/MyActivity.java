@@ -3,6 +3,7 @@ package com.epg;
 import android.app.Activity;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
@@ -19,6 +20,42 @@ public class MyActivity extends Activity {
         setContentView(R.layout.main);
         mGuideView = (GuideView) findViewById(R.id.guideView);
         mGuideView.setAdapter(new Adapter());
+        mGuideView.setOnItemClickListener(new GuideAdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(GuideAdapterView<?> parent, View view, int channelPosition,
+                    int eventPosition) {
+                Log.d("MyActivity",
+                        "GUIDE VIEW ON CLICK, channelPosition=" + channelPosition + ", eventPosition=" + eventPosition);
+            }
+        });
+        mGuideView.setOnItemSelectedListener(new GuideAdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(GuideAdapterView<?> parent, View view, int channelPosition,
+                    int eventPosition) {
+                Log.d("MyActivity",
+                        "GUIDE VIEW ON ITEM SELECTED, channelPosition=" + channelPosition + ", eventPosition=" +
+                                eventPosition);
+            }
+
+            @Override
+            public void onNothingSelected(GuideAdapterView<?> parent) {
+                Log.d("MyActivity",
+                        "GUIDE VIEW ON NOTHING SELECTED");
+            }
+        });
+        mGuideView.setOnLongPressScrollListener(new GuideAdapterView.OnLongPressScrollListener() {
+            @Override
+            public void onLongPressScrollStarted() {
+                Log.d("MyActivity",
+                        "GUIDE VIEW ON LONG PRESS SCROLL STARTED");
+            }
+
+            @Override
+            public void onLongPressScrollStopped() {
+                Log.d("MyActivity",
+                        "GUIDE VIEW ON LONG PRESS SCROLL STOPPED");
+            }
+        });
     }
 
     private class Adapter extends BaseGuideAdapter {

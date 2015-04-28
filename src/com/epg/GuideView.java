@@ -7,7 +7,6 @@ import android.view.KeyEvent;
 import android.view.View;
 
 import java.util.ArrayList;
-import java.util.logging.Logger;
 
 /**
  * Custom view for representing guide information
@@ -29,6 +28,14 @@ public class GuideView extends BaseGuideView {
     private long mLongPressTime = 0;
     private boolean isInLongPress = false;
 
+    /**
+     * Used to save old X offset of previously selected view
+     */
+    private int mTempSelectedViewOffset = INVALID_POSITION;
+
+    /**
+     * List of calculated vertical positions of channel rows
+     */
     private ArrayList<GuideRowInfo> mRows;
 
     public GuideView(Context context) throws Exception {
@@ -302,9 +309,6 @@ public class GuideView extends BaseGuideView {
             int currentY = mRectChannelIndicators.top;
             final int channelsCount = mChannelsCount;
 
-            mLastItemPosition = INVALID_POSITION;
-            mSelectedItemPosition = mFirstItemPosition;
-
             calculateFirstChannelPosition();
 
             // Calculate events area middle point
@@ -375,8 +379,6 @@ public class GuideView extends BaseGuideView {
         //log("calculateRowPositions(), ROWS=" + mRows.toString());
     }
 
-    private int mTempSelectedViewOffset = INVALID_POSITION;
-
     /**
      * Layout views in guide view
      *
@@ -442,8 +444,6 @@ public class GuideView extends BaseGuideView {
         int right = 0;
         View viewToSelect = null;
         int minCalculatedOffset = Integer.MAX_VALUE;
-        log("layoutEventsRow, mSelectedItemPosition=" + mSelectedItemPosition + ", mSelectedEventItemPosition="
-                + mSelectedEventItemPosition + ", mSelectionType=" + mSelectionType);
         for (int j = firstChildIndex; j < eventCount; j++) {
             View attached = isItemAttachedToWindow(LAYOUT_TYPE_EVENTS,
                     channelIndex, j);
@@ -456,23 +456,18 @@ public class GuideView extends BaseGuideView {
              * If selected view is null we must mark some selected channel event selected
              */
             if (channelIndex == mSelectedItemPosition && mSelectedView == null && mScrollState == SCROLL_STATE_NORMAL) {
-                //TODO decide what view should be selected
+                //TODO NOT FIXED ON SCREEN SHOULD BE IMPLEMENTED
                 if (mSelectionType == SelectionType.FIXED_ON_SCREEN) {
                     if (mSelectedEventItemPosition == INVALID_POSITION) {
                         int offset = minCalculatedOffset == 0 ? 0 : calculateOffsetFromFixedSelection(currentX, right);
-                        log("offset=" + offset+ ", minCalculatedOffset="+minCalculatedOffset+", eventIndex="+j);
                         if (minCalculatedOffset > 0 && offset < minCalculatedOffset) {
                             minCalculatedOffset = offset;
-                            log("VIEW TO SELECT = " + j);
                             viewToSelect = attached;
-                            log("VIEW TO SELECT = " + viewToSelect);
                         }
                     } else if (mSelectedEventItemPosition == j) {
-                        log("ELSE IF VIEW TO SELECT = " + j);
                         viewToSelect = attached;
                     }
                 } else if (viewToSelect == null) {
-                    log("IF VIEW TO SELECT NULL = " + j);
                     viewToSelect = attached;
                 }
             }
@@ -484,9 +479,7 @@ public class GuideView extends BaseGuideView {
                 currentX = right + mHorizontalDividerWidth;
             }
         }
-        log("layoutEventsRow, viewToSelect=" + viewToSelect);
         if (viewToSelect != null) {
-            log("layoutEventsRow, viewToSelect not NULL");
             selectNextView(viewToSelect);
             mTempSelectedViewOffset = INVALID_POSITION;
         }
