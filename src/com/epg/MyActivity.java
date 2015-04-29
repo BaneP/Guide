@@ -60,12 +60,12 @@ public class MyActivity extends Activity {
 
     private class Adapter extends BaseGuideAdapter {
 
-        int[] widths = { 150, 550, 240, 370, 425, 150, 550, 240, 370, 425, 150,
-                550, 240, 370, 425 };
-        int[] widths1 = { 550, 240, 370, 425, 150, 150, 550, 240, 425, 150, 370,
-                550, 240, 425, 370 };
-        int[] widths2 = { 370, 150, 550, 240, 150, 550, 425, 240, 425, 150,
-                240, 550, 370, 370, 425 };
+        int[] widths = { 15, 55, 24, 37, 4, 15, 55, 24, 37, 4, 15,
+                55, 24, 37, 4 };
+        int[] widths1 = { 55, 24, 37, 4, 15, 15, 55, 24, 4, 15, 37,
+                55, 24, 4, 37 };
+        int[] widths2 = { 37, 15, 55, 24, 15, 55, 4, 24, 4, 15,
+                24, 55, 37, 37, 4 };
 
         @Override
         public int getChannelsCount() {
@@ -102,7 +102,7 @@ public class MyActivity extends Activity {
          */
         @Override
         public int getOneMinuteWidth() {
-            return 2;
+            return 15;
         }
 
         /**
@@ -112,7 +112,11 @@ public class MyActivity extends Activity {
          */
         @Override
         public Calendar getStartTime() {
-            return null;
+            Calendar startTime = Calendar.getInstance();
+            startTime.set(Calendar.MILLISECOND,0);
+            startTime.set(Calendar.SECOND,0);
+            startTime.set(Calendar.MINUTE,0);
+            return startTime;
         }
 
         /**
@@ -122,7 +126,12 @@ public class MyActivity extends Activity {
          */
         @Override
         public Calendar getEndTime() {
-            return null;
+            Calendar endTime = Calendar.getInstance();
+            endTime.set(Calendar.MILLISECOND,0);
+            endTime.set(Calendar.SECOND,0);
+            endTime.set(Calendar.MINUTE,0);
+            endTime.add(Calendar.DATE, 10);
+            return endTime;
         }
 
         @Override
