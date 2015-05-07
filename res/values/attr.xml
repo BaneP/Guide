@@ -9,6 +9,7 @@
         <attr name="timeLineProgressIndicator" format="reference|color"/>
         <attr name="timeLineTextFormat" format="string"/>
         <attr name="timeLineTextSize" format="dimension"/>
+        <attr name="oneMinuteWidth" format="dimension"/>
         <attr name="selectionType">
             <enum name="fixedOnScreen" value="0"/>
             <enum name="notFixed" value="1"/>

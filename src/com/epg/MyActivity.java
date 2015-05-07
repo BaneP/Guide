@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
@@ -58,7 +59,43 @@ public class MyActivity extends Activity {
         });
     }
 
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        switch (keyCode) {
+        case KeyEvent.KEYCODE_MEDIA_RECORD: {
+            ((Adapter)mGuideView.getAdapter()).mStartTime.add(Calendar.MINUTE,30);
+            mGuideView.getAdapter().notifyDataSetChanged();
+            return true;
+        }
+        case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE: {
+            mGuideView.setAdapter(new Adapter());
+            return true;
+        }
+        case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD: {
+            mGuideView.setDrawTimeLine(true);
+            return true;
+        }
+        case KeyEvent.KEYCODE_MEDIA_REWIND: {
+            mGuideView.setDrawTimeLine(false);
+            return true;
+        }
+        }
+        return super.onKeyDown(keyCode, event);
+    }
+
     private class Adapter extends BaseGuideAdapter {
+        Calendar mStartTime;
+
+        Adapter() {
+            mStartTime = Calendar.getInstance();
+            mStartTime.set(Calendar.MILLISECOND, 0);
+            mStartTime.set(Calendar.SECOND, 0);
+            if (mStartTime.get(Calendar.MINUTE) < 30) {
+                mStartTime.set(Calendar.MINUTE, 0);
+            } else {
+                mStartTime.set(Calendar.MINUTE, 30);
+            }
+        }
 
         int[] widths = { 15, 55, 24, 37, 4, 15, 55, 24, 37, 4, 15,
                 55, 24, 37, 4 };
@@ -96,27 +133,13 @@ public class MyActivity extends Activity {
         }
 
         /**
-         * Return width for one pixel
-         *
-         * @return Calculated one minute pixel size
-         */
-        @Override
-        public int getOneMinuteWidth() {
-            return 15;
-        }
-
-        /**
          * Returns start time of time line
          *
          * @return Start time of time line, it should have 0 MILLISECONDS, SECONDS and MINUTES
          */
         @Override
         public Calendar getStartTime() {
-            Calendar startTime = Calendar.getInstance();
-            startTime.set(Calendar.MILLISECOND,0);
-            startTime.set(Calendar.SECOND,0);
-            startTime.set(Calendar.MINUTE,0);
-            return startTime;
+            return mStartTime;
         }
 
         /**
@@ -126,11 +149,8 @@ public class MyActivity extends Activity {
          */
         @Override
         public Calendar getEndTime() {
-            Calendar endTime = Calendar.getInstance();
-            endTime.set(Calendar.MILLISECOND,0);
-            endTime.set(Calendar.SECOND,0);
-            endTime.set(Calendar.MINUTE,0);
-            endTime.add(Calendar.DATE, 10);
+            Calendar endTime = (Calendar) mStartTime.clone();
+            endTime.add(Calendar.DATE, 2);
             return endTime;
         }
 

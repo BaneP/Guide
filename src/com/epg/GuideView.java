@@ -27,12 +27,6 @@ public class GuideView extends BaseGuideView {
      */
     private long mLongPressTime = 0;
     private boolean isInLongPress = false;
-
-    /**
-     * Used to save old X offset of previously selected view
-     */
-    private int mTempSelectedViewOffset = INVALID_POSITION;
-
     /**
      * List of calculated vertical positions of channel rows
      */
@@ -372,9 +366,7 @@ public class GuideView extends BaseGuideView {
             selectNextView(null);
         } else if (mScrollState == SCROLL_STATE_NORMAL && mSelectedView != null
                 && mSelectedItemPosition != getSelectedItemChannelPosition()) {
-            mTempSelectedViewOffset = mSelectedView.getLeft() + mSelectedView.getMeasuredWidth() / 2;
-            mSelectedView = null;
-            mSelectedEventItemPosition = INVALID_POSITION;
+            unselectSeletedViewWithoutCallback();
         }
         //log("calculateRowPositions(), ROWS=" + mRows.toString());
     }

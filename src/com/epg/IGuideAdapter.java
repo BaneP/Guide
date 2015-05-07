@@ -51,13 +51,6 @@ public interface IGuideAdapter {
     int getEventWidth(int channel, int event);
 
     /**
-     * Return width for one pixel
-     *
-     * @return Calculated one minute pixel size
-     */
-    int getOneMinuteWidth();
-
-    /**
      * Returns start time of time line
      *
      * @return Start time of time line, its MILLISECONDS, SECONDS and MINUTES will be ignored

@@ -16,6 +16,7 @@
           epg:timeLineTextFormat="h:mm a"
           epg:timeLineTextSize="25sp"
           epg:timeLineProgressIndicator="@drawable/time_line_indicator"
+          epg:oneMinuteWidth="15dp"
         />
 </LinearLayout>
 

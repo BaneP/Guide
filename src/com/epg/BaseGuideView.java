@@ -2,6 +2,7 @@ package com.epg;
 
 import android.content.Context;
 import android.content.res.TypedArray;
+import android.database.DataSetObserver;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -30,7 +31,7 @@ import java.util.concurrent.TimeUnit;
  * Base guide view class contains guide scroll implementation, selections.
  */
 public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
-    static final int NUMBER_OF_MINUTES_IN_DAY = 1440;
+    static final int TIMELINE_INDICATOR_REFRESH_INTERVAL = 30000;
     public static final int BIG_CHANNEL_MULTIPLIER = 3;
     public static final int DEFAULT_ONE_MINUTE_WIDTH = 1;
     /**
@@ -78,9 +79,14 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      */
     private Calendar mStartTime;
     private Calendar mEndTime;
+    /**
+     * Time line stuff
+     */
     private int mTimeLineTextSize;
     private Paint mTimeLinePaintText;
     private Rect mTimeLineRectText;
+
+    private boolean drawTimeLine = true;
     /**
      * Time line progress indicator drawable
      */
@@ -130,6 +136,12 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      */
     protected int mChannelRowHeight;
     protected int mChannelRowHeightExpanded;
+
+    /**
+     * Used to save old X offset of previously selected view
+     */
+    int mTempSelectedViewOffset = INVALID_POSITION;
+
     /**
      * Width of one minute declared in pixels
      */
@@ -170,6 +182,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      * Epg data adapter
      */
     protected BaseGuideAdapter mAdapter = null;
+    private boolean mAdapterRegistered = false;
     /**
      * Recycle bin instance. This is used for caching unused views for future
      * use.
@@ -242,6 +255,28 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         }
     };
 
+    /**
+     * Observer for guide adapter
+     */
+    private DataSetObserver mDataSetObserver = new DataSetObserver() {
+        @Override
+        public void onChanged() {
+            refreshDataFromAdapter(false);
+            unselectSeletedViewWithoutCallback();
+            redrawItems();
+        }
+    };
+
+    /**
+     * Refresh drawing of time line
+     */
+    private Runnable mRefreshTimeLineRunnable = new Runnable() {
+        @Override
+        public void run() {
+            BaseGuideView.this.invalidate();
+        }
+    };
+
     public BaseGuideView(Context context) throws Exception {
         super(context);
         init(context, null);
@@ -266,6 +301,8 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
             TypedArray a = context.getTheme().obtainStyledAttributes(attrs,
                     R.styleable.BaseGuideView, 0, 0);
             try {
+                mOneMinuteWidth = a.getDimensionPixelSize(R.styleable.BaseGuideView_oneMinuteWidth,
+                        DEFAULT_ONE_MINUTE_WIDTH);
                 mNumberOfVisibleChannels = a.getInteger(
                         R.styleable.BaseGuideView_numberOfChannelsToDisplay, 5);
                 mVerticalDividerHeight = a.getDimensionPixelSize(
@@ -342,21 +379,19 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
 
     @Override
     protected void onAttachedToWindow() {
-        // TODO
-        // if (mAdapter != null && !mAdapterRegistered) {
-        // mAdapterRegistered = true;
-        // mAdapter.registerDataSetObserver(mDataSetObserver);
-        // }
+        if (mAdapter != null && !mAdapterRegistered) {
+            mAdapterRegistered = true;
+            mAdapter.registerDataSetObserver(mDataSetObserver);
+        }
         super.onAttachedToWindow();
     }
 
     @Override
     protected void onDetachedFromWindow() {
-        // TODO
-        // if (mAdapterRegistered) {
-        // mAdapterRegistered = false;
-        // mAdapter.unregisterDataSetObserver(mDataSetObserver);
-        // }
+        if (mAdapterRegistered) {
+            mAdapterRegistered = false;
+            mAdapter.unregisterDataSetObserver(mDataSetObserver);
+        }
         super.onDetachedFromWindow();
     }
 
@@ -387,6 +422,13 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
 
     @Override
     public void setAdapter(BaseGuideAdapter adapter) {
+        log("SET ADAPTER");
+        //Unregister data set observer
+        if (mAdapterRegistered) {
+            mAdapterRegistered = false;
+            mAdapter.unregisterDataSetObserver(mDataSetObserver);
+        }
+
         // Clear all necessary data
         mAdapter = adapter;
         mCurrentOffsetX = 0;
@@ -395,36 +437,47 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         mFirstItemPosition = 0;
         mLastItemPosition = INVALID_POSITION;
         mSelectedEventItemPosition = INVALID_POSITION;
-        removeAllViewsInLayout();
+        mRecycler.moveAllViewsToRecycle();
         mRecycler.clearAll();
 
         // Initialize some elements from adapter
         if (mAdapter != null) {
-            mChannelsCount = mAdapter.getChannelsCount();
-            // Get minute pixel width
-            mOneMinuteWidth = mAdapter.getOneMinuteWidth();
-            if (mOneMinuteWidth < 1) {
-                mOneMinuteWidth = DEFAULT_ONE_MINUTE_WIDTH;
-            }
-            // Calculate total grid width
-            mStartTime = mAdapter.getStartTime();
-            mEndTime = mAdapter.getEndTime();
-            long diffInMs = mEndTime.getTimeInMillis() - mStartTime.getTimeInMillis();
-            int diffInMinutes = (int) TimeUnit.MILLISECONDS.toMinutes(diffInMs);
-            mTotalWidth = mOneMinuteWidth * diffInMinutes;
-
-            // We can not calculate total height if view is not finished its
-            // layout pass.
-            if (getMeasuredHeight() > 0) {
-                mTotalHeight = calculateTotalHeight();
-                mCurrentOffsetY = getTopOffsetBounds();
-            } else {
-                mTotalHeight = 0;
-            }
+            mAdapter.registerDataSetObserver(mDataSetObserver);
+            mAdapterRegistered = true;
+            refreshDataFromAdapter(true);
         }
-
         requestLayout();
         invalidate();
+    }
+
+    /**
+     * Get important values from adapter
+     */
+    private void refreshDataFromAdapter(boolean calculateYCoordinate) {
+        mChannelsCount = mAdapter.getChannelsCount();
+        // Calculate total grid width
+        mStartTime = mAdapter.getStartTime();
+        mEndTime = mAdapter.getEndTime();
+        mTotalWidth = mOneMinuteWidth * calculateDiffInMinutes(mEndTime, mStartTime);
+
+        // We can not calculate total height if view is not finished its
+        // layout pass.
+        if (getMeasuredHeight() > 0) {
+            mTotalHeight = calculateTotalHeight();
+            if (calculateYCoordinate) {
+                mCurrentOffsetY = getTopOffsetBounds();
+            }
+        } else {
+            mTotalHeight = 0;
+        }
+    }
+
+    /**
+     * @return Calculated difference between two calendars in minutes
+     */
+    private int calculateDiffInMinutes(Calendar endTime, Calendar startTime) {
+        long diffInMs = Math.abs(endTime.getTimeInMillis() - startTime.getTimeInMillis());
+        return (int) TimeUnit.MILLISECONDS.toMinutes(diffInMs);
     }
 
     /**
@@ -516,9 +569,12 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         // Draws selector on top of Guide view
         drawSelector(canvas);
         //Draw time line and time line indicator
-        drawTimeLine(canvas);
-        drawTimeLineIndicator(canvas);
-
+        if (drawTimeLine) {
+            drawTimeLine(canvas);
+            drawTimeLineIndicator(canvas);
+            removeCallbacks(mRefreshTimeLineRunnable);
+            postDelayed(mRefreshTimeLineRunnable, TIMELINE_INDICATOR_REFRESH_INTERVAL);
+        }
     }
 
     /**
@@ -541,28 +597,28 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      * Draw times on time line
      */
     private void drawTimeLine(Canvas canvas) {
-        Calendar calendar = (Calendar) mStartTime.clone();
-        calendar.add(Calendar.MINUTE, mCurrentOffsetX / mOneMinuteWidth);
-        Calendar leftEdgeOfGuide = (Calendar) calendar.clone();
-        Calendar rightEdgeOfGuide = (Calendar) calendar.clone();
-        rightEdgeOfGuide.add(Calendar.MINUTE, mRectEventsArea.width() / mOneMinuteWidth);
-        if (calendar.get(Calendar.MINUTE) < 15) {
-            calendar.set(Calendar.MINUTE, 0);
-        } else if (calendar.get(Calendar.MINUTE) < 45) {
-            calendar.set(Calendar.MINUTE, 30);
-        } else {
-            calendar.add(Calendar.MINUTE, 60 - calendar.get(Calendar.MINUTE));
-        }
-        String timeText;
-        while (calendar.getTimeInMillis() < rightEdgeOfGuide.getTimeInMillis()) {
-            timeText = mTimeLineFormater.format(calendar.getTime());
-            mTimeLinePaintText.getTextBounds(timeText, 0,
-                    timeText.length(), mTimeLineRectText);
-            canvas.drawText(timeText, mRectTimeLine.left + (calendar.getTimeInMillis() -
-                            leftEdgeOfGuide.getTimeInMillis()) / 60000 * mOneMinuteWidth,
-                    mRectTimeLine.height() / 2 + mTimeLineTextSize / 2,
-                    mTimeLinePaintText);
-            calendar.add(Calendar.MINUTE, 30);
+        if (mStartTime != null) {
+            Calendar calendar = (Calendar) mStartTime.clone();
+            if (calendar.get(Calendar.MINUTE) < 15) {
+                calendar.set(Calendar.MINUTE, 0);
+            } else if (calendar.get(Calendar.MINUTE) < 45) {
+                calendar.set(Calendar.MINUTE, 30);
+            } else {
+                calendar.add(Calendar.MINUTE, 60 - calendar.get(Calendar.MINUTE));
+            }
+            int pixelOffset = calculateDiffInMinutes(calendar, mStartTime) *
+                    mOneMinuteWidth - mCurrentOffsetX;
+            String timeText;
+            final int yCoordinate = mRectTimeLine.height() / 2 + mTimeLineTextSize / 2;
+            while (pixelOffset < mRectEventsArea.width()) {
+                timeText = mTimeLineFormater.format(calendar.getTime());
+                mTimeLinePaintText.getTextBounds(timeText, 0,
+                        timeText.length(), mTimeLineRectText);
+                canvas.drawText(timeText, mRectTimeLine.left + pixelOffset, yCoordinate,
+                        mTimeLinePaintText);
+                calendar.add(Calendar.MINUTE, 30);
+                pixelOffset += 30 * mOneMinuteWidth;
+            }
         }
     }
 
@@ -570,18 +626,20 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      * Draw time line indicator over the guide content
      */
     private void drawTimeLineIndicator(Canvas canvas) {
-        if (mTimeLineProgressIndicator != null) {
-            Calendar cal = Calendar.getInstance();
-            Calendar leftEdgeOfGuide = (Calendar) mStartTime.clone();
-            leftEdgeOfGuide.add(Calendar.MINUTE, mCurrentOffsetX / mOneMinuteWidth);
-            mTimeLineProgressIndicatorRect.right = (int) (mRectTimeLine.left + (cal.getTimeInMillis() - leftEdgeOfGuide
-                    .getTimeInMillis()) / 60000 * mOneMinuteWidth);
+        if (mTimeLineProgressIndicator != null && mStartTime != null) {
+            Calendar calendar = Calendar.getInstance();
+            final int pixelOffset = calculateDiffInMinutes(calendar, mStartTime) *
+                    mOneMinuteWidth - mCurrentOffsetX;
+            mTimeLineProgressIndicatorRect.right = pixelOffset;
             mTimeLineProgressIndicatorRect.top = mRectEventsArea.top;
             mTimeLineProgressIndicatorRect.bottom = mRectEventsArea.bottom;
             mTimeLineProgressIndicatorRect.left = mTimeLineProgressIndicatorRect.right - mTimeLineProgressIndicator
                     .getIntrinsicWidth();
-            mTimeLineProgressIndicator.setBounds(mTimeLineProgressIndicatorRect);
-            mTimeLineProgressIndicator.draw(canvas);
+            //Draw time line indicator only if it is visible
+            if (canvas.getClipBounds().intersect(mTimeLineProgressIndicatorRect)) {
+                mTimeLineProgressIndicator.setBounds(mTimeLineProgressIndicatorRect);
+                mTimeLineProgressIndicator.draw(canvas);
+            }
         }
     }
 
@@ -595,9 +653,6 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     @Override
     protected void onLayout(boolean changed, int l, int t, int r, int b) {
         mInLayout = true;
-        if (!changed) {
-            return;
-        }
         // Layout children only if guide view changed its bounds
         layoutChildren();
         mInLayout = false;
@@ -614,6 +669,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         mBlockLayoutRequests = true;
         try {
             if (mAdapter != null) {
+                //log("layoutChildren CURRENT OFFSET Y" + mCurrentOffsetY);
                 calculateRowPositions();
                 layoutEvents();
                 layoutChannelIndicators();
@@ -660,10 +716,8 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      * Reposition and redraw items. You may want to call this method after the
      * data provider changes.
      */
-    //TODO use this in data set observer
     public void redrawItems() {
         mRecycler.moveAllViewsToRecycle();
-        removeAllViewsInLayout();
         layoutChildren();
         invalidate();
     }
@@ -1303,6 +1357,17 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     }
 
     /**
+     * Unselect selected view without calling on nothing selected
+     */
+    protected void unselectSeletedViewWithoutCallback() {
+        if (mSelectedView != null) {
+            mTempSelectedViewOffset = mSelectedView.getLeft() + mSelectedView.getMeasuredWidth() / 2;
+            mSelectedView = null;
+            mSelectedEventItemPosition = INVALID_POSITION;
+        }
+    }
+
+    /**
      * Make new view selected. If desired view is not regular data (empty space) it can not be selected.
      *
      * @param newSelectedView New view that is selected
@@ -1790,16 +1855,6 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         ArrayList<View> mActiveChannelIndicatorViews = new ArrayList<View>();
 
         /**
-         * Recycle bin for unused channel indicators views
-         */
-        ArrayDeque<View> mRecycledTimeLineViews = new ArrayDeque<View>();
-        /**
-         * List for active channel indicator views that is currently visible on
-         * screen
-         */
-        ArrayList<View> mActiveTimeLineViews = new ArrayList<View>();
-
-        /**
          * Add new view to list of active views
          *
          * @param view View to add
@@ -1852,16 +1907,6 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         }
 
         /**
-         * Get time line view from recycler
-         *
-         * @return Pulled view, or NULL if there is no such a view inside
-         * recycler
-         */
-        View getTimeLineView() {
-            return mRecycledTimeLineViews.poll();
-        }
-
-        /**
          * Move view from active views to recycler. This method must be used
          * when view is no longer visible on screen so it should be recycled.
          *
@@ -1904,18 +1949,15 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
             // Recycle event views
             for (View v : mActiveEventsViews) {
                 recycleEventViews(v);
+                removeViewInLayout(v);
             }
             mActiveEventsViews.clear();
             // Recycle channel indicator views
             for (View v : mActiveChannelIndicatorViews) {
                 recycleChannelIndicatorViews(v);
+                removeViewInLayout(v);
             }
             mActiveChannelIndicatorViews.clear();
-            // Recycle time line views
-            for (View v : mActiveTimeLineViews) {
-                recycleTimeLineViews(v);
-            }
-            mActiveTimeLineViews.clear();
         }
 
         /**
@@ -1936,9 +1978,6 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
             // Clear all cache of channel indicators views
             mActiveChannelIndicatorViews.clear();
             mRecycledChannelIndicatorViews.clear();
-            // Clear all cache of time line views
-            mActiveTimeLineViews.clear();
-            mRecycledTimeLineViews.clear();
         }
 
         /**
@@ -1994,15 +2033,15 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
                     removeViewInLayout(v);
                 }
             }
-            // Check time line recycler
-            for (i = mRecycler.mActiveTimeLineViews.size() - 1; --i >= 0; ) {
-                v = mRecycler.mActiveTimeLineViews.get(i);
-                if (isViewInvisible(mRectTimeLine, v)) {
-                    mRecycler.mActiveTimeLineViews.remove(i);
-                    mRecycler.recycleChannelIndicatorViews(v);
-                    removeViewInLayout(v);
-                }
-            }
         }
+    }
+
+    public boolean isDrawTimeLine() {
+        return drawTimeLine;
+    }
+
+    public void setDrawTimeLine(boolean drawTimeLine) {
+        this.drawTimeLine = drawTimeLine;
+        invalidate();
     }
 }
