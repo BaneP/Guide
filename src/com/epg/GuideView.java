@@ -189,8 +189,7 @@ public class GuideView extends BaseGuideView {
         if (mOverlapChannelIndicatorsView.getLayoutParams() == null) {
             addChildView(LAYOUT_TYPE_OVERLAP_VIEW,
                     mOverlapChannelIndicatorsView, mRectChannelIndicators.left,
-                    0, mRectChannelIndicators.right
-                            - mRectChannelIndicators.left,
+                    0, mRectChannelIndicators.width() + mHorizontalDividerWidth,
                     mRectChannelIndicators.bottom, INVALID_POSITION,
                     INVALID_POSITION);
         } else {

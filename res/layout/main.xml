@@ -5,18 +5,24 @@
               android:layout_width="fill_parent"
               android:layout_height="fill_parent"
     >
-    <view android:layout_width="match_parent"
-          android:layout_height="match_parent"
-          class="com.epg.GuideView"
-          android:id="@+id/guideView"
-          android:layout_gravity="center_horizontal"
-          epg:horizontalDividerHeight="3dp"
-          epg:verticalDividerHeight="3dp"
-          epg:selector="@drawable/ic_launcher"
-          epg:timeLineTextFormat="h:mm a"
-          epg:timeLineTextSize="25sp"
-          epg:timeLineProgressIndicator="@drawable/time_line_indicator"
-          epg:oneMinuteWidth="15dp"
+    <Button
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="New Button"
+        android:id="@+id/button"/>
+
+    <com.epg.GuideView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:id="@+id/guideView"
+        android:layout_gravity="center_horizontal"
+        epg:horizontalDividerHeight="3dp"
+        epg:verticalDividerHeight="3dp"
+        epg:selector="@drawable/ic_launcher"
+        epg:timeLineTextFormat="h:mm a"
+        epg:timeLineTextSize="25sp"
+        epg:timeLineProgressIndicator="@drawable/time_line_indicator"
+        epg:oneMinuteWidth="6dp"
         />
 </LinearLayout>
 

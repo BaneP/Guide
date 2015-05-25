@@ -195,6 +195,17 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     Scroller mScroll;
 
     /**
+     * Internal listener for end of scroll runnable.
+     */
+    interface OnAnimationFinishedListener {
+        /**
+         * @return TRUE if new listener is set (so listener instance must be alive), FALSE otherwise (listener
+         * instance can become NULL)
+         */
+        boolean animationFinished();
+    }
+
+    /**
      * Listener for fast scroll end animation
      */
     private Animation.AnimationListener mFastScrollEndAnimationListener;
@@ -535,7 +546,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         mChannelRowHeightExpanded -= mVerticalDividerHeight;
         // Setup rect for sections
         mRectTimeLine.set(mChannelRowHeight, 0, viewWidth, mChannelRowHeight);
-        mRectChannelIndicators.set(0, mChannelRowHeight, mChannelRowHeight,
+        mRectChannelIndicators.set(0, mChannelRowHeight, mChannelRowHeight - mHorizontalDividerWidth,
                 viewHeight);
         mRectEventsArea.set(mChannelRowHeight, mChannelRowHeight, viewWidth,
                 viewHeight);
@@ -630,7 +641,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
             Calendar calendar = Calendar.getInstance();
             final int pixelOffset = calculateDiffInMinutes(calendar, mStartTime) *
                     mOneMinuteWidth - mCurrentOffsetX;
-            mTimeLineProgressIndicatorRect.right = pixelOffset;
+            mTimeLineProgressIndicatorRect.right = mRectTimeLine.left + pixelOffset;
             mTimeLineProgressIndicatorRect.top = mRectEventsArea.top;
             mTimeLineProgressIndicatorRect.bottom = mRectEventsArea.bottom;
             mTimeLineProgressIndicatorRect.left = mTimeLineProgressIndicatorRect.right - mTimeLineProgressIndicator
@@ -1461,6 +1472,11 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         }
     }
 
+    /**
+     * Change the state of scrolling
+     * @param newScrollState Desired new scroll state
+     * @param keyCode Keycode from remote
+     */
     void changeScrollState(int newScrollState, int keyCode) {
         log("changeScrollState, newScrollState=" + newScrollState
                 + ", mScrollState=" + mScrollState + ", keyCode=" + keyCode);
@@ -1483,8 +1499,8 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
                             mSelectedItemPosition < 1)) {
                         return;
                     }
-                    NormalToFastScrollFinishedListener animFinishedListener = new NormalToFastScrollFinishedListener(
-                            difference);
+                    NormalToFastScrollFinishedListener animFinishedListener = new NormalToFastScrollFinishedListener
+                            (this, difference);
                     if (mScroll.isFinished()) {
                         animFinishedListener.animationFinished();
                     } else if (activeFinishListener == null
@@ -1507,7 +1523,8 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
                 mScrollState = SCROLL_STATE_NORMAL;
                 fireOnLongPressScrollStateChanged();
             } else if (newScrollState == SCROLL_STATE_FAST_SCROLL_END) {
-                FastToFastScrollEndFinishedListener animFinishedListener = new FastToFastScrollEndFinishedListener();
+                FastToFastScrollEndFinishedListener animFinishedListener = new FastToFastScrollEndFinishedListener
+                        (this);
                 if (mScroll.isFinished()) {
                     animFinishedListener.animationFinished();
                 } else {
@@ -1530,77 +1547,9 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     }
 
     /**
-     * Internal listener for end of scroll runnable.
-     */
-    interface OnAnimationFinishedListener {
-        /**
-         * @return TRUE if new listener is set (so listener instance must be alive), FALSE otherwise (listener
-         * instance can become NULL)
-         */
-        boolean animationFinished();
-    }
-
-    /**
-     * Class that wait end of normal scroll and switches to fast scroll
-     */
-    private class NormalToFastScrollFinishedListener implements
-            OnAnimationFinishedListener {
-        private int mDifference;
-
-        NormalToFastScrollFinishedListener(int difference) {
-            this.mDifference = difference;
-        }
-
-        @Override
-        public boolean animationFinished() {
-            mScrollState = SCROLL_STATE_FAST_SCROLL;
-            fireOnLongPressScrollStateChanged();
-            mSmoothScrollRunnable.resumeVerticalScroll(mDifference);
-            return false;
-        }
-    }
-
-    /**
-     * Class that wait end of normal scroll and switches to fast scroll
-     */
-    private class NormalToNormalScrollFinishedListener implements
-            OnAnimationFinishedListener {
-        private int mDesiredChannelPosition;
-        private final int mScrollDuration;
-
-        NormalToNormalScrollFinishedListener(int desiredChannelPosition,
-                int duration) {
-            this.mDesiredChannelPosition = desiredChannelPosition;
-            this.mScrollDuration = duration;
-        }
-
-        @Override
-        public boolean animationFinished() {
-            mSmoothScrollRunnable.startVerticalScrollToPosition(
-                    mDesiredChannelPosition, mScrollDuration);
-            return false;
-        }
-    }
-
-    /**
-     * Class that wait end of normal scroll and switches to fast scroll
-     */
-    private class FastToFastScrollEndFinishedListener implements
-            OnAnimationFinishedListener {
-
-        FastToFastScrollEndFinishedListener() {
-        }
-
-        @Override
-        public boolean animationFinished() {
-            return fastScrollEnd();
-        }
-    }
-
-    /**
      * Create animation that returns normal scroll from fast scroll
      */
-    private boolean fastScrollEnd() {
+    boolean fastScrollEnd() {
         View selected = isItemAttachedToWindow(
                 LAYOUT_TYPE_CHANNEL_INDICATOR, mSelectedItemPosition,
                 INVALID_POSITION);
@@ -1729,7 +1678,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
             // if it is invisible perform fast scroll
             if (isScrollRunning()) {
                 if (mScrollState == SCROLL_STATE_NORMAL) {
-                    setOnAnimationFinishedListener(new NormalToNormalScrollFinishedListener(
+                    setOnAnimationFinishedListener(new NormalToNormalScrollFinishedListener(mSmoothScrollRunnable,
                             newChannelPosition, duration));
                     return true;
                 }
