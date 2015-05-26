@@ -194,7 +194,7 @@ public class MyActivity extends Activity {
         public View getChannelIndicatorView(int channel, View convertView, ViewGroup parent) {
             if (convertView == null) {
                 convertView = new TextView(parent.getContext());
-                convertView.setBackgroundColor(0x55999999);
+                convertView.setBackgroundColor(0xFF999999);
             }
             ((TextView) convertView).setText("CHANNEL " + channel);
             return convertView;

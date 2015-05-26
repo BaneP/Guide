@@ -39,7 +39,6 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      */
     static final int LAYOUT_TYPE_CHANNEL_INDICATOR = 1;
     static final int LAYOUT_TYPE_EVENTS = 2;
-    static final int LAYOUT_TYPE_OVERLAP_VIEW = 3;
     /**
      * Duration of smooth scroll animation while executing single scroll
      */
@@ -374,7 +373,6 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         // Used for calculating child row height
         mChildRowHeightRect = new Rect();
         // Initialize guide view
-        setBackgroundColor(Color.BLACK);
         setFocusable(true);
 
         //Initialize time line text format
@@ -550,6 +548,8 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
                 viewHeight);
         mRectEventsArea.set(mChannelRowHeight, mChannelRowHeight, viewWidth,
                 viewHeight);
+        //TODO is this ok?
+        setPadding(0, mRectEventsArea.top, 0, 0);
 
         // Setup selected row area
         final int selectedTop = mRectEventsArea.top
@@ -936,13 +936,6 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         case LAYOUT_TYPE_CHANNEL_INDICATOR: {
             mRecycler.addChannelIndicatorView(child);
             addViewToLayout(child, width, height, channelIndex,
-                    INVALID_POSITION);
-            measureEventItemView(child, width, height);
-            child.layout(left, top, left + width, top + height);
-            break;
-        }
-        case LAYOUT_TYPE_OVERLAP_VIEW: {
-            addViewToLayout(child, width, height, INVALID_POSITION,
                     INVALID_POSITION);
             measureEventItemView(child, width, height);
             child.layout(left, top, left + width, top + height);
@@ -1474,8 +1467,9 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
 
     /**
      * Change the state of scrolling
+     *
      * @param newScrollState Desired new scroll state
-     * @param keyCode Keycode from remote
+     * @param keyCode        Keycode from remote
      */
     void changeScrollState(int newScrollState, int keyCode) {
         log("changeScrollState, newScrollState=" + newScrollState

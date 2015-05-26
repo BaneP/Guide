@@ -1,7 +1,9 @@
 package com.epg;
 
 import android.content.Context;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
 import android.util.AttributeSet;
 import android.view.KeyEvent;
 import android.view.View;
@@ -14,10 +16,9 @@ import java.util.ArrayList;
 public class GuideView extends BaseGuideView {
 
     /**
-     * These views are used to be drawn above guide event views
+     * This is used to be drawn above guide event views
      */
-    private View mOverlapChannelIndicatorsView;
-    private View mOverlapTimeLineView;
+    private Paint mDividerOverlayPaint;
     /**
      * Used for calculating central selected item position
      */
@@ -54,12 +55,8 @@ public class GuideView extends BaseGuideView {
      * @param context
      */
     private void init(Context context) {
-        mOverlapChannelIndicatorsView = new View(context);
-        mOverlapTimeLineView = new View(context);
-        // Set background color to BLACK non transparent
-        mOverlapChannelIndicatorsView.setBackgroundColor(Color.BLACK);
-        mOverlapTimeLineView.setBackgroundColor(Color.BLACK);
-
+        mDividerOverlayPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        mDividerOverlayPaint.setColor(Color.BLACK);
         // Init rows information holder
         mRows = new ArrayList<GuideRowInfo>();
     }
@@ -184,30 +181,24 @@ public class GuideView extends BaseGuideView {
         mSmoothScrollRunnable.startVerticalScrollToPosition(position, (int) (diff * SMOOTH_FAST_SCROLL_DURATION * 0.6));
     }
 
+
+    @Override
+    protected void dispatchDraw(Canvas canvas) {
+        if(mRows!= null && mRows.size()>0) {
+            canvas.drawRect(mRectChannelIndicators.right, mRows.get(0).getmTop(),mRectChannelIndicators
+                            .right+mHorizontalDividerWidth,mRows.get(mRows.size()-1).getmBottom(),
+                    mDividerOverlayPaint);
+        }
+        super.dispatchDraw(canvas);
+    }
+
     @Override
     protected void layoutChannelIndicators() {
-        if (mOverlapChannelIndicatorsView.getLayoutParams() == null) {
-            addChildView(LAYOUT_TYPE_OVERLAP_VIEW,
-                    mOverlapChannelIndicatorsView, mRectChannelIndicators.left,
-                    0, mRectChannelIndicators.width() + mHorizontalDividerWidth,
-                    mRectChannelIndicators.bottom, INVALID_POSITION,
-                    INVALID_POSITION);
-        } else {
-            bringChildToFront(mOverlapChannelIndicatorsView);
-        }
         layoutViews(LAYOUT_TYPE_CHANNEL_INDICATOR);
     }
 
     @Override
     protected void layoutTimeLine() {
-        if (mOverlapTimeLineView.getLayoutParams() == null) {
-            addChildView(LAYOUT_TYPE_OVERLAP_VIEW, mOverlapTimeLineView, 0,
-                    mRectTimeLine.top, mRectTimeLine.right,
-                    mRectTimeLine.bottom - mRectTimeLine.top, INVALID_POSITION,
-                    INVALID_POSITION);
-        } else {
-            bringChildToFront(mOverlapTimeLineView);
-        }
     }
 
     @Override
@@ -517,8 +508,7 @@ public class GuideView extends BaseGuideView {
             eventWidth = mAdapter.getEventWidth(channelIndex, eventIndex) * mOneMinuteWidth
                     - (eventIndex == 0 ? 0 : mHorizontalDividerWidth);
         } else if (layoutType == LAYOUT_TYPE_CHANNEL_INDICATOR) {
-            eventWidth = mRectChannelIndicators.right
-                    - mRectChannelIndicators.left;
+            eventWidth = mRectChannelIndicators.width();
         }
         if (attached == null) {
             if (layoutType == LAYOUT_TYPE_CHANNEL_INDICATOR) {
