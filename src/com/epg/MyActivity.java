@@ -7,6 +7,7 @@ import android.util.Log;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Button;
 import android.widget.TextView;
 
 import java.util.Calendar;
@@ -57,13 +58,36 @@ public class MyActivity extends Activity {
                         "GUIDE VIEW ON LONG PRESS SCROLL STOPPED");
             }
         });
+        mGuideView.setBackgroundView(findViewById(R.id.backgroundView));
+        Button btn = (Button) findViewById(R.id.button);
+        btn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                if (mGuideView.isShown()) {
+                    mGuideView.setVisibility(View.INVISIBLE);
+                } else {
+                    mGuideView.setVisibility(View.VISIBLE);
+                }
+            }
+        });
+        btn = (Button) findViewById(R.id.button2);
+        btn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                if(mGuideView.getGuideMode()==BaseGuideView.GUIDE_MODE_ON_NOW) {
+                    mGuideView.changeGuideMode(BaseGuideView.GUIDE_MODE_FULL);
+                }else {
+                    mGuideView.changeGuideMode(BaseGuideView.GUIDE_MODE_ON_NOW);
+                }
+            }
+        });
     }
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         switch (keyCode) {
         case KeyEvent.KEYCODE_MEDIA_RECORD: {
-            ((Adapter)mGuideView.getAdapter()).mStartTime.add(Calendar.MINUTE,30);
+            ((Adapter) mGuideView.getAdapter()).mStartTime.add(Calendar.MINUTE, 30);
             mGuideView.getAdapter().notifyDataSetChanged();
             return true;
         }
@@ -116,7 +140,6 @@ public class MyActivity extends Activity {
 
         @Override
         public int getEventWidth(int channel, int event) {
-            Random rand = new Random();
             int i = channel % 3;
             switch (i) {
             case 0: {
@@ -156,7 +179,7 @@ public class MyActivity extends Activity {
 
         @Override
         public int getNowEventIndex(int channel) {
-            return 0;
+            return 3;
         }
 
         @Override

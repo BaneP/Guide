@@ -1,28 +1,52 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-              xmlns:epg="http://schemas.android.com/apk/res/com.epg"
-              android:orientation="vertical"
-              android:layout_width="fill_parent"
-              android:layout_height="fill_parent"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+             xmlns:epg="http://schemas.android.com/apk/res/com.epg"
+             android:orientation="vertical"
+             android:layout_width="fill_parent"
+             android:layout_height="fill_parent"
     >
-    <Button
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="New Button"
-        android:id="@+id/button"/>
-
-    <com.epg.GuideView
+    <View
+        android:id="@+id/backgroundView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:id="@+id/guideView"
-        android:layout_gravity="center_horizontal"
-        epg:horizontalDividerHeight="3dp"
-        epg:verticalDividerHeight="3dp"
-        epg:selector="@drawable/ic_launcher"
-        epg:timeLineTextFormat="h:mm a"
-        epg:timeLineTextSize="25sp"
-        epg:timeLineProgressIndicator="@drawable/time_line_indicator"
-        epg:oneMinuteWidth="6dp"
-        />
-</LinearLayout>
+        android:background="#FF000000"/>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+            <Button
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="New Button"
+                android:id="@+id/button"/>
+
+            <Button
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="New Button"
+                android:id="@+id/button2"/>
+        </LinearLayout>
+
+
+        <com.epg.GuideView
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:id="@+id/guideView"
+            android:layout_gravity="center_horizontal"
+            epg:horizontalDividerHeight="3dp"
+            epg:verticalDividerHeight="3dp"
+            epg:selector="@drawable/ic_launcher"
+            epg:timeLineTextFormat="h:mm a"
+            epg:timeLineTextSize="25sp"
+            epg:timeLineProgressIndicator="@drawable/time_line_indicator"
+            epg:oneMinuteWidth="6dp"
+            />
+    </LinearLayout>
+</FrameLayout>
 

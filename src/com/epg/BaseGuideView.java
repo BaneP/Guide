@@ -34,11 +34,27 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     static final int TIMELINE_INDICATOR_REFRESH_INTERVAL = 30000;
     public static final int BIG_CHANNEL_MULTIPLIER = 3;
     public static final int DEFAULT_ONE_MINUTE_WIDTH = 1;
+
+    /**
+     * Guide mode types
+     */
+    public static final int GUIDE_MODE_FULL = 0;
+    public static final int GUIDE_MODE_ON_NOW = 1;
+    static final int GUIDE_MODE_IN_TRANSITION = 2;
+
+    private View mBackgroundView;
+    /**
+     * Active guide mode
+     */
+    int mGuideMode = GUIDE_MODE_FULL;
     /**
      * Types of layout pass
      */
     static final int LAYOUT_TYPE_CHANNEL_INDICATOR = 1;
     static final int LAYOUT_TYPE_EVENTS = 2;
+
+    public static final int FULL_GUIDE_ANIM_DURATION = 500;
+    public static final int ON_NOW_GUIDE_ANIM_DURATION = 250;
     /**
      * Duration of smooth scroll animation while executing single scroll
      */
@@ -85,7 +101,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     private Paint mTimeLinePaintText;
     private Rect mTimeLineRectText;
 
-    private boolean drawTimeLine = true;
+    boolean drawTimeLine = true;
     /**
      * Time line progress indicator drawable
      */
@@ -548,6 +564,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
                 viewHeight);
         mRectEventsArea.set(mChannelRowHeight, mChannelRowHeight, viewWidth,
                 viewHeight);
+        log("mRectEventsArea "+mRectEventsArea.toString());
         //TODO is this ok?
         setPadding(0, mRectEventsArea.top, 0, 0);
 
@@ -576,7 +593,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     protected void dispatchDraw(Canvas canvas) {
         super.dispatchDraw(canvas);
         //Clip the canvas so that only events and time line area can be drawn into
-        canvas.clipRect(mRectTimeLine.left, 0, mRectTimeLine.right, mRectEventsArea.bottom);
+        //canvas.clipRect(mRectTimeLine.left, 0, mRectTimeLine.right, mRectEventsArea.bottom);
         // Draws selector on top of Guide view
         drawSelector(canvas);
         //Draw time line and time line indicator
@@ -594,6 +611,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      * @param canvas
      */
     private void drawSelector(Canvas canvas) {
+
         if (mSelector != null && mSelectedView != null) {
             mSelectorRect.left = mSelectedView.getLeft();
             mSelectorRect.right = mSelectedView.getRight();
@@ -602,6 +620,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
             mSelector.setBounds(mSelectorRect);
             mSelector.draw(canvas);
         }
+        log("DRAW SELECTOR "+mSelectedView+", mSelectorRect "+mSelectorRect.toString());
     }
 
     /**
@@ -1986,5 +2005,17 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     public void setDrawTimeLine(boolean drawTimeLine) {
         this.drawTimeLine = drawTimeLine;
         invalidate();
+    }
+
+    public View getBackgroundView() {
+        return mBackgroundView;
+    }
+
+    public void setBackgroundView(View mBackgroundView) {
+        this.mBackgroundView = mBackgroundView;
+    }
+
+    public int getGuideMode() {
+        return mGuideMode;
     }
 }
