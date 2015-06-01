@@ -16,16 +16,44 @@ import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 
 /**
- * Custom view for representing guide information
+ * Custom view for representing guide information. Contains logic for layout child views, changing states of guide
+ * (ON_NOW, FULL), handling key events etc...
+ *
+ * @author Branimir Pavlovic
  */
 public class GuideView extends BaseGuideView {
+    /**
+     * Open and close guide animation duration
+     */
+    public static final int FULL_GUIDE_ANIM_DURATION = 500;
+    public static final int ON_NOW_GUIDE_ANIM_DURATION = 250;
+    public static final int GUIDE_TRANSITION_ANIM_DURATION = 500;
+
+    /**
+     * Guide mode types
+     */
+    public static final int GUIDE_MODE_FULL = 0;
+    public static final int GUIDE_MODE_ON_NOW = 1;
+    static final int GUIDE_MODE_IN_TRANSITION = 2;
+
+    /**
+     * Active guide mode
+     */
+    int mGuideMode = GUIDE_MODE_FULL;
 
     /**
      * This is used to be drawn above guide event views
      */
     private Paint mDividerOverlayPaint;
+
+    /**
+     * View to change alpha when opening/closing guide
+     */
+    private View mBackgroundView;
+
     /**
      * Used for calculating central selected item position
      */
@@ -40,9 +68,13 @@ public class GuideView extends BaseGuideView {
      */
     private ArrayList<GuideRowInfo> mRows;
     /**
-     * Force redraw when changing size of guide
+     * Force redraw when force changing size of guide (when changing guide mode)
      */
     private boolean redrawOnSizeChanged = false;
+    /**
+     * Contains information about running events for each channel
+     */
+    private HashMap<Integer, GuideEventAnimInfo> mRunningEventInfo;
 
     public GuideView(Context context) throws Exception {
         super(context);
@@ -66,10 +98,14 @@ public class GuideView extends BaseGuideView {
      * @param context
      */
     private void init(Context context) {
+        //Initialize divider paint between channel indicators and events
         mDividerOverlayPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         mDividerOverlayPaint.setColor(Color.BLACK);
+
         // Init rows information holder
         mRows = new ArrayList<GuideRowInfo>();
+        //Init running event info
+        mRunningEventInfo = new HashMap<Integer, GuideEventAnimInfo>();
     }
 
     @Override
@@ -88,17 +124,21 @@ public class GuideView extends BaseGuideView {
         boolean handled = false;
         switch (keyCode) {
         case KeyEvent.KEYCODE_DPAD_UP: {
-            log("ON KEY UP, KEYCODE_DPAD_UP, mScrollState=" + mScrollState + ", isInLongPress=" + isInLongPress);
-            if (mScrollState == SCROLL_STATE_FAST_SCROLL) {
-                changeScrollState(SCROLL_STATE_FAST_SCROLL_END, keyCode);
+            if (mGuideMode != GUIDE_MODE_IN_TRANSITION) {
+                log("ON KEY UP, KEYCODE_DPAD_UP, mScrollState=" + mScrollState + ", isInLongPress=" + isInLongPress);
+                if (mScrollState == SCROLL_STATE_FAST_SCROLL) {
+                    changeScrollState(SCROLL_STATE_FAST_SCROLL_END, keyCode);
+                }
             }
             handled = true;
             break;
         }
         case KeyEvent.KEYCODE_DPAD_DOWN: {
-            log("ON KEY UP, KEYCODE_DPAD_DOWN, mScrollState=" + mScrollState + ", isInLongPress=" + isInLongPress);
-            if (mScrollState == SCROLL_STATE_FAST_SCROLL) {
-                changeScrollState(SCROLL_STATE_FAST_SCROLL_END, keyCode);
+            if (mGuideMode != GUIDE_MODE_IN_TRANSITION) {
+                log("ON KEY UP, KEYCODE_DPAD_DOWN, mScrollState=" + mScrollState + ", isInLongPress=" + isInLongPress);
+                if (mScrollState == SCROLL_STATE_FAST_SCROLL) {
+                    changeScrollState(SCROLL_STATE_FAST_SCROLL_END, keyCode);
+                }
             }
             handled = true;
             break;
@@ -121,25 +161,28 @@ public class GuideView extends BaseGuideView {
                 isInLongPress = true;
             }
             long now = System.currentTimeMillis();
-            log("ON KEY DOWN, KEYCODE_DPAD_UP, mScrollState=" + mScrollState + ", isInLongPress=" + isInLongPress);
-            /**
-             * Long press
-             */
-            if (isInLongPress
-                    && (now - mLongPressTime > SMOOTH_FAST_SCROLL_DURATION - 60)) {
-                mLongPressTime = now;
-                if (mScrollState == SCROLL_STATE_NORMAL) {
-                    changeScrollState(SCROLL_STATE_FAST_SCROLL, keyCode);
-                } else if (mScrollState == SCROLL_STATE_FAST_SCROLL) {
-                    mSmoothScrollRunnable.resumeVerticalScroll(-1);
+            if (mGuideMode != GUIDE_MODE_IN_TRANSITION) {
+                log("ON KEY DOWN, KEYCODE_DPAD_DOWN, mScrollState=" + mScrollState + ", isInLongPress=" +
+                        isInLongPress);
+                /**
+                 * Long press
+                 */
+                if (isInLongPress
+                        && (now - mLongPressTime > SMOOTH_FAST_SCROLL_DURATION - 60)) {
+                    mLongPressTime = now;
+                    if (mScrollState == SCROLL_STATE_NORMAL) {
+                        changeScrollState(SCROLL_STATE_FAST_SCROLL, keyCode);
+                    } else if (mScrollState == SCROLL_STATE_FAST_SCROLL) {
+                        mSmoothScrollRunnable.resumeVerticalScroll(-1);
+                    }
                 }
-            }
-            /**
-             * Normal press
-             */
-            else if (!isInLongPress) {
-                return mSmoothScrollRunnable.startVerticalScrollToPosition(
-                        mSelectedItemPosition - 1, SMOOTH_SCROLL_DURATION);
+                /**
+                 * Normal press
+                 */
+                else if (!isInLongPress) {
+                    return mSmoothScrollRunnable.startVerticalScrollToPosition(
+                            mSelectedItemPosition - 1, SMOOTH_SCROLL_DURATION);
+                }
             }
             return true;
         }
@@ -148,25 +191,28 @@ public class GuideView extends BaseGuideView {
                 isInLongPress = true;
             }
             long now = System.currentTimeMillis();
-            log("ON KEY DOWN, KEYCODE_DPAD_DOWN, mScrollState=" + mScrollState + ", isInLongPress=" + isInLongPress);
-            /**
-             * Long press
-             */
-            if (isInLongPress
-                    && (now - mLongPressTime > SMOOTH_FAST_SCROLL_DURATION - 60)) {
-                mLongPressTime = now;
-                if (mScrollState == SCROLL_STATE_NORMAL) {
-                    changeScrollState(SCROLL_STATE_FAST_SCROLL, keyCode);
-                } else if (mScrollState == SCROLL_STATE_FAST_SCROLL) {
-                    mSmoothScrollRunnable.resumeVerticalScroll(1);
+            if (mGuideMode != GUIDE_MODE_IN_TRANSITION) {
+                log("ON KEY DOWN, KEYCODE_DPAD_DOWN, mScrollState=" + mScrollState + ", isInLongPress="
+                        + isInLongPress);
+                /**
+                 * Long press
+                 */
+                if (isInLongPress
+                        && (now - mLongPressTime > SMOOTH_FAST_SCROLL_DURATION - 60)) {
+                    mLongPressTime = now;
+                    if (mScrollState == SCROLL_STATE_NORMAL) {
+                        changeScrollState(SCROLL_STATE_FAST_SCROLL, keyCode);
+                    } else if (mScrollState == SCROLL_STATE_FAST_SCROLL) {
+                        mSmoothScrollRunnable.resumeVerticalScroll(1);
+                    }
                 }
-            }
-            /**
-             * Normal press
-             */
-            else if (!isInLongPress) {
-                return mSmoothScrollRunnable.startVerticalScrollToPosition(
-                        mSelectedItemPosition + 1, SMOOTH_SCROLL_DURATION);
+                /**
+                 * Normal press
+                 */
+                else if (!isInLongPress) {
+                    return mSmoothScrollRunnable.startVerticalScrollToPosition(
+                            mSelectedItemPosition + 1, SMOOTH_SCROLL_DURATION);
+                }
             }
             return true;
         }
@@ -216,6 +262,12 @@ public class GuideView extends BaseGuideView {
         if (anim != null) {
             setAnimation(anim);
         }
+        //Return scroll to beginning
+        if (visibility == View.VISIBLE) {
+            mCurrentOffsetX = 0;
+            unselectSeletedViewWithoutCallback();
+            redrawItems();
+        }
         super.setVisibility(visibility);
 
     }
@@ -228,6 +280,7 @@ public class GuideView extends BaseGuideView {
     public void changeGuideMode(int newMode) {
         switch (mGuideMode) {
         case GUIDE_MODE_FULL: {
+            //TODO cant change mode from full guide, you can only close it
             if (newMode == GUIDE_MODE_ON_NOW) {
                 mGuideMode = GUIDE_MODE_ON_NOW;
                 resizeGuideWithoutAnimation();
@@ -237,32 +290,81 @@ public class GuideView extends BaseGuideView {
         }
         case GUIDE_MODE_IN_TRANSITION: {
             if (newMode == GUIDE_MODE_FULL) {
-                //TODO
+                mGuideMode = GUIDE_MODE_FULL;
+                //TODO what to do here?
             }
             break;
         }
         case GUIDE_MODE_ON_NOW: {
             if (newMode == GUIDE_MODE_FULL) {
-                //                if (isShown()) {
-                //                    changeGuideMode(GUIDE_MODE_IN_TRANSITION);
-                //                } else {
-                mGuideMode = GUIDE_MODE_FULL;
-                resizeGuideWithoutAnimation();
-                unselectSeletedViewWithoutCallback();
-                //                }
+                //If guide is visible we should start animation
+                if (isShown()) {
+                    changeGuideMode(GUIDE_MODE_IN_TRANSITION);
+                }
+                //If guide is invisible just resize and refresh it
+                else {
+                    mGuideMode = GUIDE_MODE_FULL;
+                    resizeGuideWithoutAnimation();
+                    unselectSeletedViewWithoutCallback();
+                }
             } else if (newMode == GUIDE_MODE_IN_TRANSITION) {
-                mGuideMode = GUIDE_MODE_IN_TRANSITION;
-                //TODO start animation
+                startGuideTransitionMode();
             }
             break;
         }
         }
     }
 
+    /**
+     * Starts animation that will expand guide to FULL
+     */
+    private void startGuideTransitionMode() {
+        int width = 0;
+        if (getParent() != null && getParent() instanceof ViewGroup) {
+            width = ((ViewGroup) getParent()).getMeasuredWidth();
+        }
+        mRunningEventInfo.clear();
+        final ArrayList<View> views = mRecycler.getActiveEventViews();
+        int channelIndex = 0;
+        int eventIndex = 0;
+        //Populate animation info for active events
+        for (View eventView : views) {
+            channelIndex = ((LayoutParams) eventView.getLayoutParams()).mChannelIndex;
+            eventIndex = ((LayoutParams) eventView.getLayoutParams()).mEventIndex;
+            mRunningEventInfo.put(channelIndex, new GuideEventAnimInfo
+                    (eventView, eventIndex, eventView.getMeasuredWidth(), calculateEventWidth(channelIndex, eventIndex),
+                            getOffsetForSelectedEventFromBeginning(channelIndex, eventIndex)));
+            log("EVENT ANIM INFO: channelIndex=" + channelIndex + mRunningEventInfo.get(channelIndex).toString());
+        }
+
+        GuideResizeAnimation animation = new GuideResizeAnimation(this, getMeasuredWidth(), width, mRunningEventInfo);
+        animation.setDuration(GUIDE_TRANSITION_ANIM_DURATION);
+        animation.setInterpolator(new AccelerateInterpolator());
+        animation.setAnimationListener(new Animation.AnimationListener() {
+            @Override
+            public void onAnimationStart(Animation animation) {
+                mGuideMode = GUIDE_MODE_IN_TRANSITION;
+                drawTimeLine = true;
+            }
+
+            @Override
+            public void onAnimationEnd(Animation animation) {
+                changeGuideMode(GUIDE_MODE_FULL);
+            }
+
+            @Override
+            public void onAnimationRepeat(Animation animation) {
+
+            }
+        });
+        startAnimation(animation);
+    }
+
     @Override
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
         super.onSizeChanged(w, h, oldw, oldh);
-        if(redrawOnSizeChanged){
+        if (redrawOnSizeChanged) {
+            redrawOnSizeChanged = false;
             redrawItems();
         }
     }
@@ -312,9 +414,10 @@ public class GuideView extends BaseGuideView {
     @Override
     protected void dispatchDraw(Canvas canvas) {
         super.dispatchDraw(canvas);
+        //Draw divider between channel indicators and events
         if (mRows != null && mRows.size() > 0) {
-            canvas.drawRect(mRectChannelIndicators.right, mRows.get(0).getmTop(), mRectChannelIndicators
-                            .right + mHorizontalDividerWidth, mRows.get(mRows.size() - 1).getmBottom(),
+            canvas.drawRect(mRectChannelIndicators.right, mRows.get(0).getTop(), mRectChannelIndicators
+                            .right + mHorizontalDividerWidth, mRows.get(mRows.size() - 1).getBottom(),
                     mDividerOverlayPaint);
         }
     }
@@ -322,10 +425,6 @@ public class GuideView extends BaseGuideView {
     @Override
     protected void layoutChannelIndicators() {
         layoutViews(LAYOUT_TYPE_CHANNEL_INDICATOR);
-    }
-
-    @Override
-    protected void layoutTimeLine() {
     }
 
     @Override
@@ -359,7 +458,7 @@ public class GuideView extends BaseGuideView {
              * From selected to top of the screen
              */
             for (i = mSelectedItemPosition; i >= 0; i--) {
-                View attached = isItemAttachedToWindow(
+                View attached = findItemAttachedToWindow(
                         LAYOUT_TYPE_CHANNEL_INDICATOR, i, INVALID_POSITION);
                 // Calculate current row height
                 currentRowHeight = calculateRowHeight(INVALID_POSITION,
@@ -395,7 +494,7 @@ public class GuideView extends BaseGuideView {
              * From selected to the bottom of the screen
              */
             for (i = mSelectedItemPosition + 1; i < mChannelsCount; i++) {
-                View attached = isItemAttachedToWindow(
+                View attached = findItemAttachedToWindow(
                         LAYOUT_TYPE_CHANNEL_INDICATOR, i, INVALID_POSITION);
                 // Calculate current row height
                 currentRowHeight = calculateRowHeight(INVALID_POSITION,
@@ -443,7 +542,7 @@ public class GuideView extends BaseGuideView {
                 // Get channel indicator view at the desired position, or null
                 // if
                 // view do not exist
-                final View attached = isItemAttachedToWindow(
+                final View attached = findItemAttachedToWindow(
                         LAYOUT_TYPE_CHANNEL_INDICATOR, i, INVALID_POSITION);
                 // Calculate current row height
                 currentRowHeight = calculateRowHeight(currentY,
@@ -500,20 +599,20 @@ public class GuideView extends BaseGuideView {
         for (int i = 0; i < mRows.size(); i++) {
             guideRowInfo = mRows.get(i);
             if (layoutType == LAYOUT_TYPE_CHANNEL_INDICATOR) {
-                final View attached = isItemAttachedToWindow(
+                final View attached = findItemAttachedToWindow(
                         LAYOUT_TYPE_CHANNEL_INDICATOR,
-                        guideRowInfo.getmChannelIndex(), INVALID_POSITION);
+                        guideRowInfo.getChannelIndex(), INVALID_POSITION);
                 layoutChildView(layoutType, attached,
-                        guideRowInfo.getmHeight(), guideRowInfo.getmTop(),
+                        guideRowInfo.getHeight(), guideRowInfo.getTop(),
                         mRectChannelIndicators.left,
-                        guideRowInfo.getmResizedPercent(),
-                        guideRowInfo.getmChannelIndex(), INVALID_POSITION);
+                        guideRowInfo.getResizedPercent(),
+                        guideRowInfo.getChannelIndex(), INVALID_POSITION);
 
             } else {
                 // Get first child position based on current scroll value
                 // and calculate its invisible part
                 firstPositionInfo = getPositionAndOffsetForScrollValue(
-                        mCurrentOffsetX, guideRowInfo.getmChannelIndex());
+                        mCurrentOffsetX, guideRowInfo.getChannelIndex());
                 // No data for desired channel, don't draw anything
                 if (firstPositionInfo.getFirstChildInvisiblePart() < 0
                         || firstPositionInfo.getFirstChildIndex() < 0) {
@@ -521,6 +620,8 @@ public class GuideView extends BaseGuideView {
                 }
                 if (mGuideMode == GUIDE_MODE_ON_NOW) {
                     layoutEventsOnNowMode(guideRowInfo);
+                } else if (mGuideMode == GUIDE_MODE_IN_TRANSITION) {
+                    layoutEventsInTransitionMode(guideRowInfo);
                 } else {
                     // Move X coordinate to left to support drawing of invisible
                     // part of event view
@@ -529,35 +630,64 @@ public class GuideView extends BaseGuideView {
                         currentX += mHorizontalDividerWidth;
                     }
                     // Layout all event views for channel
-                    layoutEventsRow(guideRowInfo.getmChannelIndex(), currentX,
-                            guideRowInfo.getmTop(),
+                    layoutEventsRow(guideRowInfo.getChannelIndex(), currentX,
+                            guideRowInfo.getTop(),
                             firstPositionInfo.getFirstChildIndex(),
-                            guideRowInfo.getmHeight());
+                            guideRowInfo.getHeight());
                     currentX = mRectEventsArea.left;
                 }
             }
         }
     }
 
+    /**
+     * Position running events in ON_NOW mode.
+     *
+     * @param guideRowInfo Information about current row
+     */
     private void layoutEventsOnNowMode(GuideRowInfo guideRowInfo) {
-        final int eventIndex = mAdapter.getNowEventIndex(guideRowInfo.getmChannelIndex());
-        View attached = isItemAttachedToWindow(
+        final int eventIndex = mAdapter.getNowEventIndex(guideRowInfo.getChannelIndex());
+        View attached = findItemAttachedToWindow(
                 LAYOUT_TYPE_EVENTS,
-                guideRowInfo.getmChannelIndex(), eventIndex);
+                guideRowInfo.getChannelIndex(), eventIndex);
         attached = layoutChildView(LAYOUT_TYPE_EVENTS, attached,
-                guideRowInfo.getmHeight(), guideRowInfo.getmTop(),
+                guideRowInfo.getHeight(), guideRowInfo.getTop(),
                 mRectEventsArea.left,
-                guideRowInfo.getmResizedPercent(),
-                guideRowInfo.getmChannelIndex(), eventIndex);
-        log("layoutEventsOnNowMode "+guideRowInfo.getmChannelIndex()+", "
-                + "mSelectedItemPosition"+mSelectedItemPosition+", mSelectedView "
-                + ""+mSelectedView+", "
-                + ""+attached);
-        if (guideRowInfo.getmChannelIndex() == mSelectedItemPosition && mSelectedView == null && mScrollState == SCROLL_STATE_NORMAL) {
-            log("layoutEventsOnNowMode selected!!!!");
+                guideRowInfo.getResizedPercent(),
+                guideRowInfo.getChannelIndex(), eventIndex);
+        if (guideRowInfo.getChannelIndex() == mSelectedItemPosition && mSelectedView == null
+                && mScrollState == SCROLL_STATE_NORMAL) {
             selectNextView(attached);
             mTempSelectedViewOffset = INVALID_POSITION;
         }
+    }
+
+    /**
+     * Position running events in TRANSITION mode.
+     *
+     * @param guideRowInfo Information about current row
+     */
+    private void layoutEventsInTransitionMode(GuideRowInfo guideRowInfo) {
+        final int eventIndex = mRunningEventInfo.get(guideRowInfo.getChannelIndex()).getEventPosition();
+
+        //Resize and layout running event
+        View attached = findItemAttachedToWindow(
+                LAYOUT_TYPE_EVENTS,
+                guideRowInfo.getChannelIndex(), eventIndex);
+        attached = layoutChildView(LAYOUT_TYPE_EVENTS, attached,
+                guideRowInfo.getHeight(), guideRowInfo.getTop(),
+                ((LayoutParams) attached.getLayoutParams()).mLeftCoordinate + mRectEventsArea.left,
+                guideRowInfo.getResizedPercent(),
+                guideRowInfo.getChannelIndex(), eventIndex);
+
+        int xCoordinateRight = attached.getRight() + mHorizontalDividerWidth;
+        int xCoordinateLeft = attached.getLeft() - mHorizontalDividerWidth;
+        // Layout events to the right
+        layoutEventsRow(guideRowInfo.getChannelIndex(), xCoordinateRight, guideRowInfo.getTop(), eventIndex + 1,
+                guideRowInfo.getHeight());
+        //Layout events to the left
+        layoutEventsRowToLeft(guideRowInfo.getChannelIndex(), xCoordinateLeft, guideRowInfo.getTop(), eventIndex - 1,
+                guideRowInfo.getHeight());
     }
 
     /**
@@ -579,7 +709,7 @@ public class GuideView extends BaseGuideView {
         View viewToSelect = null;
         int minCalculatedOffset = Integer.MAX_VALUE;
         for (int j = firstChildIndex; j < eventCount; j++) {
-            View attached = isItemAttachedToWindow(LAYOUT_TYPE_EVENTS,
+            View attached = findItemAttachedToWindow(LAYOUT_TYPE_EVENTS,
                     channelIndex, j);
             attached = layoutChildView(LAYOUT_TYPE_EVENTS, attached,
                     currentRowHeight, currentY, currentX, resizedPercent,
@@ -616,6 +746,39 @@ public class GuideView extends BaseGuideView {
         if (viewToSelect != null) {
             selectNextView(viewToSelect);
             mTempSelectedViewOffset = INVALID_POSITION;
+        }
+    }
+
+    /**
+     * Position whole row of guide data from right to left.
+     *
+     * @param channelIndex     Index of channel to draw
+     * @param currentX         Current X position on screen
+     * @param currentY         Current Y position on screen
+     * @param firstChildIndex  Index of first visible event index
+     * @param currentRowHeight Current row height
+     */
+    private void layoutEventsRowToLeft(final int channelIndex, int currentX,
+            int currentY, final int firstChildIndex, int currentRowHeight) {
+        // Get number of events
+        final int resizedPercent = calculateResizedPercentOfView(currentRowHeight);
+        int eventWidth = 0;
+        int left = 0;
+        for (int j = firstChildIndex; j >= 0; j--) {
+            View attached = findItemAttachedToWindow(LAYOUT_TYPE_EVENTS,
+                    channelIndex, j);
+            eventWidth = calculateEventWidth(channelIndex, j);
+            attached = layoutChildView(LAYOUT_TYPE_EVENTS, attached,
+                    currentRowHeight, currentY, currentX - eventWidth, resizedPercent,
+                    channelIndex, j);
+            left = currentX - eventWidth;
+            // If child right edge is larger or equals to right
+            // bound of EpgView
+            if (left <= 0) {
+                break;
+            } else {
+                currentX = left - mHorizontalDividerWidth;
+            }
         }
     }
 
@@ -659,9 +822,11 @@ public class GuideView extends BaseGuideView {
         if (layoutType == LAYOUT_TYPE_EVENTS) {
             if (mGuideMode == GUIDE_MODE_ON_NOW) {
                 eventWidth = mRectEventsArea.width();
+            } else if (mGuideMode == GUIDE_MODE_IN_TRANSITION
+                    && mRunningEventInfo.get(channelIndex).getEventPosition() == eventIndex) {
+                eventWidth = attached.getLayoutParams().width;
             } else {
-                eventWidth = mAdapter.getEventWidth(channelIndex, eventIndex) * mOneMinuteWidth
-                        - (eventIndex == 0 ? 0 : mHorizontalDividerWidth);
+                eventWidth = calculateEventWidth(channelIndex, eventIndex);
             }
         } else if (layoutType == LAYOUT_TYPE_CHANNEL_INDICATOR) {
             eventWidth = mRectChannelIndicators.width();
@@ -681,8 +846,9 @@ public class GuideView extends BaseGuideView {
                 bringChildToFront(attached);
             }
             // If event height is changed we must resize its view dimension
-            if (attached.getHeight() != currentRowHeight) {
-                resizeChildView(attached, currentY, eventWidth,
+            if (attached.getHeight() != currentRowHeight || attached.getWidth() != eventWidth || currentX != attached
+                    .getLeft()) {
+                resizeChildView(attached, currentY, currentX, eventWidth,
                         currentRowHeight, resizedPercent);
             }
             // If current Y coordinate and top position of the view are
@@ -692,5 +858,29 @@ public class GuideView extends BaseGuideView {
             }
         }
         return attached;
+    }
+
+    /**
+     * Calculate width of view that represents desired event.
+     *
+     * @param channelIndex Channel index
+     * @param eventIndex   Event index
+     * @return Calculated width of view.
+     */
+    private int calculateEventWidth(int channelIndex, int eventIndex) {
+        return mAdapter.getEventWidth(channelIndex, eventIndex) * mOneMinuteWidth
+                - (eventIndex == 0 ? 0 : mHorizontalDividerWidth);
+    }
+
+    public int getGuideMode() {
+        return mGuideMode;
+    }
+
+    public View getBackgroundView() {
+        return mBackgroundView;
+    }
+
+    public void setBackgroundView(View mBackgroundView) {
+        this.mBackgroundView = mBackgroundView;
     }
 }

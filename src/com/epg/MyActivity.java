@@ -74,10 +74,10 @@ public class MyActivity extends Activity {
         btn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                if(mGuideView.getGuideMode()==BaseGuideView.GUIDE_MODE_ON_NOW) {
-                    mGuideView.changeGuideMode(BaseGuideView.GUIDE_MODE_FULL);
-                }else {
-                    mGuideView.changeGuideMode(BaseGuideView.GUIDE_MODE_ON_NOW);
+                if (mGuideView.getGuideMode() == GuideView.GUIDE_MODE_ON_NOW) {
+                    mGuideView.changeGuideMode(GuideView.GUIDE_MODE_FULL);
+                } else {
+                    mGuideView.changeGuideMode(GuideView.GUIDE_MODE_ON_NOW);
                 }
             }
         });
@@ -87,7 +87,11 @@ public class MyActivity extends Activity {
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         switch (keyCode) {
         case KeyEvent.KEYCODE_MEDIA_RECORD: {
-            ((Adapter) mGuideView.getAdapter()).mStartTime.add(Calendar.MINUTE, 30);
+            if (mGuideView.getGuideMode() == GuideView.GUIDE_MODE_ON_NOW) {
+                ((Adapter) mGuideView.getAdapter()).runningEvent += 1;
+            } else {
+                ((Adapter) mGuideView.getAdapter()).mStartTime.add(Calendar.MINUTE, 30);
+            }
             mGuideView.getAdapter().notifyDataSetChanged();
             return true;
         }
@@ -109,6 +113,7 @@ public class MyActivity extends Activity {
 
     private class Adapter extends BaseGuideAdapter {
         Calendar mStartTime;
+        int runningEvent = 3;
 
         Adapter() {
             mStartTime = Calendar.getInstance();
@@ -179,7 +184,7 @@ public class MyActivity extends Activity {
 
         @Override
         public int getNowEventIndex(int channel) {
-            return 3;
+            return runningEvent;
         }
 
         @Override

@@ -9,22 +9,23 @@ import android.view.animation.TranslateAnimation;
 import java.lang.ref.WeakReference;
 
 /**
+ * Simple translate animation that is used to open/close guide view. It also contains logic to animate alpha of
+ * background view behind guide.
+ *
  * @author Branimir Pavlovic
  */
 public class GuideOpenCloseAnimation extends TranslateAnimation {
-    private WeakReference<BaseGuideView> mBaseGuideViewWeakReference;
     private WeakReference<View> mBackgroundViewWeakReference;
     private boolean runAlphaAnim = false;
     private float mStartAlpha;
     private float mEndAlpha;
 
-    public GuideOpenCloseAnimation(BaseGuideView baseGuideView, float startAlpha, float endAlpha, boolean open) {
-        super(Animation.ABSOLUTE, open ? baseGuideView.getMeasuredWidth() : 0, Animation.ABSOLUTE,
-                open ? 0 : baseGuideView.getMeasuredWidth(),
+    public GuideOpenCloseAnimation(GuideView guideView, float startAlpha, float endAlpha, boolean open) {
+        super(Animation.ABSOLUTE, open ? guideView.getMeasuredWidth() : 0, Animation.ABSOLUTE,
+                open ? 0 : guideView.getMeasuredWidth(),
                 Animation.ABSOLUTE, 0, Animation.ABSOLUTE, 0);
-        mBaseGuideViewWeakReference = new WeakReference<BaseGuideView>(baseGuideView);
-        if (baseGuideView.getParent() != null && baseGuideView.getParent() instanceof ViewGroup) {
-            mBackgroundViewWeakReference = new WeakReference<View>(baseGuideView.getBackgroundView());
+        if (guideView.getParent() != null && guideView.getParent() instanceof ViewGroup) {
+            mBackgroundViewWeakReference = new WeakReference<View>(guideView.getBackgroundView());
             mStartAlpha = startAlpha;
             mEndAlpha = endAlpha;
         }

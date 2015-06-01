@@ -7,7 +7,9 @@ import android.view.ViewGroup;
 import java.util.Calendar;
 
 /**
- * Created by bane on 4/02/15.
+ * Interface that connects data set with guide view implementation
+ *
+ * @author Branimir Pavlovic
  */
 public interface IGuideAdapter {
     /**

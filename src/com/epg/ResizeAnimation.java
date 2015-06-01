@@ -5,7 +5,9 @@ import android.view.animation.Animation;
 import android.view.animation.Transformation;
 
 /**
- * Created by bane on 2/03/15.
+ * Used to resize new selected view and expanded view in SMOOTH_SCROLL_END animation
+ *
+ * @author Branimir Pavlovic
  */
 class ResizeAnimation extends Animation {
     private final int mNormalHeight;
@@ -27,7 +29,6 @@ class ResizeAnimation extends Animation {
     protected void applyTransformation(float interpolatedTime, Transformation t) {
         int newHeight = (int) (mNormalHeight + (mExpandedHeight - mNormalHeight)
                 * interpolatedTime);
-        //Log.d("ResizeAnimation", "newHeight=" + newHeight);
         mSelectedView.getLayoutParams().height = newHeight;
         if (mExpandedView != null) {
             mExpandedView.getLayoutParams().height = mExpandedHeight

@@ -3,6 +3,8 @@ package com.epg;
 /**
  * Helper class that contains information about first visible child view and its invisible part (offset from left
  * edge of the screen).
+ *
+ * @author Branimir Pavlovic
  */
 class FirstPositionInfo {
     private int mFirstChildIndex;

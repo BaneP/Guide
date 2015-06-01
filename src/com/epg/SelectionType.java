@@ -3,6 +3,12 @@ package com.epg;
 import android.os.Parcel;
 import android.os.Parcelable;
 
+/**
+ * Selection type of guide view. Determines if selection will be on fixed part of guide or it will jump to next event
+ * without scroll
+ *
+ * @author Branimir Pavlovic
+ */
 public enum SelectionType implements Parcelable {
     FIXED_ON_SCREEN(0), NOT_FIXED_ON_SCREEN(1);
     int value;

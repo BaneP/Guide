@@ -1,7 +1,7 @@
 package com.epg;
 
 /**
- * Holds informations about row position
+ * Holds information about rows. It contains top, bottom, height, resized percent of row and represented channel index.
  *
  * @author Branimir Pavlovic
  */
@@ -23,29 +23,26 @@ class GuideRowInfo {
 
     @Override
     public String toString() {
-        return "GuideRowInfo [mTop=" + mTop + ", mBottom=" + mBottom
-                + ", mHeight=" + mHeight + ", mResizedPercent="
-                + mResizedPercent + ", mChannelIndex=" + mChannelIndex + "]";
+        return "GuideRowInfo [mTop=" + mTop + ", mChannelIndex=" + mChannelIndex + "]";
     }
 
-    public int getmTop() {
+    public int getTop() {
         return mTop;
     }
 
-    public int getmBottom() {
+    public int getBottom() {
         return mBottom;
     }
 
-    public int getmHeight() {
+    public int getHeight() {
         return mHeight;
     }
 
-    public int getmResizedPercent() {
+    public int getResizedPercent() {
         return mResizedPercent;
     }
 
-    public int getmChannelIndex() {
+    public int getChannelIndex() {
         return mChannelIndex;
     }
-
 }

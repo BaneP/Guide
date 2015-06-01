@@ -4,7 +4,7 @@ import android.database.DataSetObservable;
 import android.database.DataSetObserver;
 
 /**
- * Created by bane on 4/02/15.
+ * @author Branimir Pavlovic
  */
 public abstract class BaseGuideAdapter implements IGuideAdapter {
     private final DataSetObservable mDataSetObservable = new DataSetObservable();

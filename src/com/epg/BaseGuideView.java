@@ -3,10 +3,12 @@ package com.epg;
 import android.content.Context;
 import android.content.res.TypedArray;
 import android.database.DataSetObserver;
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Rect;
+import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.util.AttributeSet;
 import android.util.SparseArray;
@@ -25,36 +27,32 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.TimeZone;
-import java.util.concurrent.TimeUnit;
 
 /**
- * Base guide view class contains guide scroll implementation, selections.
+ * Base guide view class contains guide scroll implementation, selections and layout helper methods.
+ *
+ * @author Branimir Pavlovic
  */
 public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
+    /**
+     * Defined time of refreshing time line indicator if guide is not refreshed for some time
+     */
     static final int TIMELINE_INDICATOR_REFRESH_INTERVAL = 30000;
+    /**
+     * How much expanded channel is larger than non expanded
+     */
     public static final int BIG_CHANNEL_MULTIPLIER = 3;
+    /**
+     * Default width of one minute in pixels
+     */
     public static final int DEFAULT_ONE_MINUTE_WIDTH = 1;
 
-    /**
-     * Guide mode types
-     */
-    public static final int GUIDE_MODE_FULL = 0;
-    public static final int GUIDE_MODE_ON_NOW = 1;
-    static final int GUIDE_MODE_IN_TRANSITION = 2;
-
-    private View mBackgroundView;
-    /**
-     * Active guide mode
-     */
-    int mGuideMode = GUIDE_MODE_FULL;
     /**
      * Types of layout pass
      */
     static final int LAYOUT_TYPE_CHANNEL_INDICATOR = 1;
     static final int LAYOUT_TYPE_EVENTS = 2;
 
-    public static final int FULL_GUIDE_ANIM_DURATION = 500;
-    public static final int ON_NOW_GUIDE_ANIM_DURATION = 250;
     /**
      * Duration of smooth scroll animation while executing single scroll
      */
@@ -76,10 +74,10 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     /**
      * Refresh interval of smooth scroll animations
      */
-    static final int REFRESH_INTERVAL = 16;// We want at least 1000/16=60 FPS
+    static final int REFRESH_INTERVAL = 16; // We want at least 1000/16=60 FPS
     // while executing animation
     /**
-     * Different scroll states
+     * Different scrolling states
      */
     static final int SCROLL_STATE_NORMAL = 0;
     static final int SCROLL_STATE_FAST_SCROLL = 1;
@@ -100,12 +98,13 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     private int mTimeLineTextSize;
     private Paint mTimeLinePaintText;
     private Rect mTimeLineRectText;
-
+    /**
+     * Draw time line in dispatchDraw() or not
+     */
     boolean drawTimeLine = true;
     /**
-     * Time line progress indicator drawable
+     * Time line progress indicator drawable and its rect
      */
-    // TODO draw time line progress on top of view
     private Rect mTimeLineProgressIndicatorRect;
     protected Drawable mTimeLineProgressIndicator;
     /**
@@ -143,7 +142,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     protected Rect mRectEventsArea;
     protected Rect mRectSelectedRowArea;
     /**
-     * Helper rectangle that is used for calculating row height
+     * Helper rectangle that is used for calculating row height in calculateRowHeight() method
      */
     private Rect mChildRowHeightRect;
     /**
@@ -153,7 +152,8 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     protected int mChannelRowHeightExpanded;
 
     /**
-     * Used to save old X offset of previously selected view
+     * Used to save old X offset of previously selected view. This is used when user scrolls UP/DOWN to know what
+     * view to select next.
      */
     int mTempSelectedViewOffset = INVALID_POSITION;
 
@@ -172,21 +172,23 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     /**
      * Divider drawable
      */
+    //FIXME Drawing of divider should be implemented
     protected Drawable mDivider;
     /**
      * Indicates number of channels to display inside guide
      */
     protected int mNumberOfVisibleChannels;
     /**
-     * Position of where on screen will be selected event
+     * Position of where on X axis will be selected event
      */
     protected SelectionType mSelectionType;
     protected float mSelectionRelativePosition;
     protected int mSelectionAbsolutePosition;
     /**
-     * Selector drawable
+     * Selector drawable and bitmap. It can be NULL
      */
     protected Drawable mSelector;
+    protected Bitmap mSelectorBitmap;
     /**
      * Selection rectangle position object, holds information about selected
      * view coordinates on screen
@@ -194,7 +196,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     private Rect mSelectorRect = new Rect();
 
     /**
-     * Epg data adapter
+     * Epg data adapter instance
      */
     protected BaseGuideAdapter mAdapter = null;
     private boolean mAdapterRegistered = false;
@@ -223,7 +225,22 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     /**
      * Listener for fast scroll end animation
      */
-    private Animation.AnimationListener mFastScrollEndAnimationListener;
+    private final Animation.AnimationListener mFastScrollEndAnimationListener = new Animation.AnimationListener() {
+        @Override
+        public void onAnimationStart(Animation animation) {
+            mScrollState = SCROLL_STATE_FAST_SCROLL_END;
+        }
+
+        @Override
+        public void onAnimationEnd(Animation animation) {
+            changeScrollState(SCROLL_STATE_NORMAL,
+                    INVALID_POSITION);
+        }
+
+        @Override
+        public void onAnimationRepeat(Animation animation) {
+        }
+    };
 
     /**
      * Runnable that smooth scrolls list
@@ -296,7 +313,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     /**
      * Refresh drawing of time line
      */
-    private Runnable mRefreshTimeLineRunnable = new Runnable() {
+    private final Runnable mRefreshTimeLineRunnable = new Runnable() {
         @Override
         public void run() {
             BaseGuideView.this.invalidate();
@@ -357,6 +374,9 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
                 a.recycle();
             }
         }
+        if (mSelector != null) {
+            mSelectorBitmap = ((BitmapDrawable) mSelector).getBitmap();
+        }
 
         // Check if number of visible channels is not even
         if (mNumberOfVisibleChannels % 2 == 0) {
@@ -367,23 +387,6 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         // Initialize scroller
         mScroll = new Scroller(context, new LinearInterpolator());
         mSmoothScrollRunnable = new SmoothScrollRunnable();
-        //Initialize fast scroll end animation listener
-        mFastScrollEndAnimationListener = new Animation.AnimationListener() {
-            @Override
-            public void onAnimationStart(Animation animation) {
-                mScrollState = SCROLL_STATE_FAST_SCROLL_END;
-            }
-
-            @Override
-            public void onAnimationEnd(Animation animation) {
-                changeScrollState(SCROLL_STATE_NORMAL,
-                        INVALID_POSITION);
-            }
-
-            @Override
-            public void onAnimationRepeat(Animation animation) {
-            }
-        };
         // Initialize recycler
         mRecycler = new Recycler();
         // Used for calculating child row height
@@ -447,7 +450,6 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
 
     @Override
     public void setAdapter(BaseGuideAdapter adapter) {
-        log("SET ADAPTER");
         //Unregister data set observer
         if (mAdapterRegistered) {
             mAdapterRegistered = false;
@@ -498,14 +500,6 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     }
 
     /**
-     * @return Calculated difference between two calendars in minutes
-     */
-    private int calculateDiffInMinutes(Calendar endTime, Calendar startTime) {
-        long diffInMs = Math.abs(endTime.getTimeInMillis() - startTime.getTimeInMillis());
-        return (int) TimeUnit.MILLISECONDS.toMinutes(diffInMs);
-    }
-
-    /**
      * Set desired channel selected
      *
      * @param channelPosition New selected position
@@ -542,7 +536,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
         final int viewWidth = getMeasuredWidth();
         final int viewHeight = getMeasuredHeight();
-        log("ONMEASURE viewWidth=" + viewWidth + ", viewHeight=" + viewHeight);
+        //log("ONMEASURE viewWidth=" + viewWidth + ", viewHeight=" + viewHeight);
 
         // Calculate rect objects for three different areas
         mRectTimeLine = new Rect();
@@ -564,8 +558,8 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
                 viewHeight);
         mRectEventsArea.set(mChannelRowHeight, mChannelRowHeight, viewWidth,
                 viewHeight);
-        log("mRectEventsArea "+mRectEventsArea.toString());
-        //TODO is this ok?
+
+        //Set padding so no event can be shown below time line
         setPadding(0, mRectEventsArea.top, 0, 0);
 
         // Setup selected row area
@@ -592,8 +586,6 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     @Override
     protected void dispatchDraw(Canvas canvas) {
         super.dispatchDraw(canvas);
-        //Clip the canvas so that only events and time line area can be drawn into
-        //canvas.clipRect(mRectTimeLine.left, 0, mRectTimeLine.right, mRectEventsArea.bottom);
         // Draws selector on top of Guide view
         drawSelector(canvas);
         //Draw time line and time line indicator
@@ -611,16 +603,37 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      * @param canvas
      */
     private void drawSelector(Canvas canvas) {
-
-        if (mSelector != null && mSelectedView != null) {
+        if (mSelectedView != null) {
+            //Set selector rect to be above selected view
             mSelectorRect.left = mSelectedView.getLeft();
             mSelectorRect.right = mSelectedView.getRight();
             mSelectorRect.top = mSelectedView.getTop();
             mSelectorRect.bottom = mSelectedView.getBottom();
-            mSelector.setBounds(mSelectorRect);
-            mSelector.draw(canvas);
+            //If selector bitmap is not null we use bitmap as selector
+            if (mSelectorBitmap != null) {
+                Rect src = null;
+                //If part of selected vew is not visible we mus calculate how much from bitmap to use when drawing
+                // selection
+                if (mSelectorRect.left < mRectEventsArea.left) {
+                    src = new Rect();
+                    final float percent = (1f / ((float) mSelectorRect.width() / (float) (mRectEventsArea.left
+                            - mSelectorRect.left)));
+                    src.set((int) Math.ceil((percent * (float) mSelectorBitmap.getWidth()))
+                            , 0, mSelectorBitmap.getWidth(), mSelectorBitmap.getHeight());
+                    mSelectorRect.left = mRectEventsArea.left;
+                }
+                canvas.drawBitmap(mSelectorBitmap, src, mSelectorRect, null);
+            }
+            //If selector bitmap is null but selector drawable is not null we use drawable as selector
+            else if (mSelector != null) {
+                if (mSelectorRect.left < mRectEventsArea.left) {
+                    mSelectorRect.left = mRectEventsArea.left;
+                }
+                mSelector.setBounds(mSelectorRect);
+                mSelector.draw(canvas);
+            }
+
         }
-        log("DRAW SELECTOR "+mSelectedView+", mSelectorRect "+mSelectorRect.toString());
     }
 
     /**
@@ -658,13 +671,15 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     private void drawTimeLineIndicator(Canvas canvas) {
         if (mTimeLineProgressIndicator != null && mStartTime != null) {
             Calendar calendar = Calendar.getInstance();
-            final int pixelOffset = calculateDiffInMinutes(calendar, mStartTime) *
+            int pixelOffset = calculateDiffInMinutes(calendar, mStartTime) *
                     mOneMinuteWidth - mCurrentOffsetX;
             mTimeLineProgressIndicatorRect.right = mRectTimeLine.left + pixelOffset;
             mTimeLineProgressIndicatorRect.top = mRectEventsArea.top;
             mTimeLineProgressIndicatorRect.bottom = mRectEventsArea.bottom;
-            mTimeLineProgressIndicatorRect.left = mTimeLineProgressIndicatorRect.right - mTimeLineProgressIndicator
+            pixelOffset = mTimeLineProgressIndicatorRect.right - mTimeLineProgressIndicator
                     .getIntrinsicWidth();
+            mTimeLineProgressIndicatorRect.left =
+                    pixelOffset < mRectEventsArea.left ? mRectEventsArea.left : pixelOffset;
             //Draw time line indicator only if it is visible
             if (canvas.getClipBounds().intersect(mTimeLineProgressIndicatorRect)) {
                 mTimeLineProgressIndicator.setBounds(mTimeLineProgressIndicatorRect);
@@ -703,7 +718,6 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
                 calculateRowPositions();
                 layoutEvents();
                 layoutChannelIndicators();
-                layoutTimeLine();
             }
         } finally {
             if (!blockLayoutRequests) {
@@ -716,11 +730,6 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      * Position channel indicators
      */
     protected abstract void layoutChannelIndicators();
-
-    /**
-     * Position time line items
-     */
-    protected abstract void layoutTimeLine();
 
     /**
      * Position guide events
@@ -811,16 +820,6 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     }
 
     /**
-     * Calculates Y overlap value of 2 rectangles
-     *
-     * @return Calculated overlap value
-     */
-    private int calculateYOverlapValue(Rect rect1, Rect rect2) {
-        return Math.max(0, Math.min(rect1.bottom, rect2.bottom)
-                - Math.max(rect1.top, rect2.top));
-    }
-
-    /**
      * Calculates current row height based on current row start Y position
      *
      * @param currentY          Current row start Y position
@@ -905,6 +904,24 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     }
 
     /**
+     * Get offset from beginning for desired event. This method is used when calculating final offset in pixels for
+     * running event.
+     *
+     * @param channel       Channel index
+     * @param eventPosition Running event position
+     * @return Calculated offset from beginning
+     */
+    protected int getOffsetForSelectedEventFromBeginning(int channel, int eventPosition) {
+        int sum = 0;
+        for (int i = 0; i < eventPosition; i++) {
+            sum += mAdapter.getEventWidth(channel, i) * mOneMinuteWidth;
+        }
+        sum += (eventPosition == 0 ? 0 : mHorizontalDividerWidth);
+        sum -= mCurrentOffsetX;
+        return sum;
+    }
+
+    /**
      * Change size and position of view that is currently visible on screen
      *
      * @param viewToResize Desired view to resize
@@ -912,7 +929,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      * @param width        Width of the view
      * @param newHeight    New height of the view
      */
-    protected void resizeChildView(View viewToResize, int currentY, int width,
+    protected void resizeChildView(View viewToResize, int currentY, int currentX, int width,
             int newHeight, int currentRowExpandedPercent) {
         LayoutParams params = (LayoutParams) viewToResize.getLayoutParams();
         if (params == null) {
@@ -923,8 +940,8 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
             params.mCurrentResizePercentValue = currentRowExpandedPercent;
         }
         measureEventItemView(viewToResize, width, newHeight);
-        viewToResize.layout(viewToResize.getLeft(), currentY,
-                viewToResize.getLeft() + width, currentY + newHeight);
+        viewToResize.layout(currentX, currentY,
+                currentX + width, currentY + newHeight);
     }
 
     /**
@@ -1114,7 +1131,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      */
     protected boolean moveSelectedViewsToSelectionBounds() {
         if (mScrollState == SCROLL_STATE_NORMAL) {
-            final View firstVisibleChild = isItemAttachedToWindow(
+            final View firstVisibleChild = findItemAttachedToWindow(
                     LAYOUT_TYPE_CHANNEL_INDICATOR, mFirstItemPosition,
                     INVALID_POSITION);
             if (firstVisibleChild != null) {
@@ -1210,21 +1227,6 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     }
 
     /**
-     * Check is view (at least one pixel of it) is inside the visible area or
-     * not.
-     *
-     * @param view View to check is it visible or not.
-     * @return TRUE if the view is invisible i.e. out of visible screen bounds,
-     * FALSE - if at least one pixel of it is visible.
-     */
-    protected boolean isViewInvisible(Rect desiredRect, View view) {
-        return view == null || view.getLeft() >= desiredRect.right
-                || view.getRight() <= desiredRect.left
-                || view.getTop() >= desiredRect.bottom
-                || view.getBottom() <= desiredRect.top;
-    }
-
-    /**
      * Determine if view for desired channel and desired event is already
      * visible
      *
@@ -1236,7 +1238,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      * @param eventIndex   Desired event index
      * @return View on the screen, NULL otherwise
      */
-    protected View isItemAttachedToWindow(int layoutType, int channelIndex,
+    protected View findItemAttachedToWindow(int layoutType, int channelIndex,
             int eventIndex) {
         switch (layoutType) {
         case LAYOUT_TYPE_CHANNEL_INDICATOR: {
@@ -1314,7 +1316,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         if (desiredEventIndex >= mAdapter.getEventsCount(mSelectedItemPosition) || desiredEventIndex <= -1) {
             return false;
         }
-        final View nextView = isItemAttachedToWindow(LAYOUT_TYPE_EVENTS,
+        final View nextView = findItemAttachedToWindow(LAYOUT_TYPE_EVENTS,
                 mSelectedItemPosition, desiredEventIndex);
         int eventPosition = getEventPositionOnScreen(nextView, desiredEventIndex);
         if (mSelectionType == SelectionType.FIXED_ON_SCREEN) {
@@ -1474,6 +1476,10 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
          * size, if 100, view has fully expanded size
          */
         public int mCurrentResizePercentValue;
+        /**
+         * Calculated left coordinate. Only used in ON_NOW to FULL_GUIDE mode transition.
+         */
+        public int mLeftCoordinate = 0;
 
         public LayoutParams(Context c, AttributeSet attrs) {
             super(c, attrs);
@@ -1491,8 +1497,6 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      * @param keyCode        Keycode from remote
      */
     void changeScrollState(int newScrollState, int keyCode) {
-        log("changeScrollState, newScrollState=" + newScrollState
-                + ", mScrollState=" + mScrollState + ", keyCode=" + keyCode);
         OnAnimationFinishedListener activeFinishListener = mSmoothScrollRunnable
                 .getOnAnimationFinishedListener();
         switch (mScrollState) {
@@ -1560,15 +1564,16 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     }
 
     /**
-     * Create animation that returns normal scroll from fast scroll
+     * Create animation that expands new selected channel row, and shrinks expanded channel row if it is visible on
+     * screen
      */
     boolean fastScrollEnd() {
-        View selected = isItemAttachedToWindow(
+        View selected = findItemAttachedToWindow(
                 LAYOUT_TYPE_CHANNEL_INDICATOR, mSelectedItemPosition,
                 INVALID_POSITION);
         if (selected != null) {
             // Expanded view can be null if it is out of screen
-            final View expanded = isItemAttachedToWindow(
+            final View expanded = findItemAttachedToWindow(
                     LAYOUT_TYPE_CHANNEL_INDICATOR, mExpandedItemIndex,
                     INVALID_POSITION);
 
@@ -1723,8 +1728,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         }
 
         boolean startScrollBy(int byX, int byY, int duration) {
-            log("SmoothScrollRunnable startScrollBy, byX=" + byX + ", byY="
-                    + byY);
+            //log("SmoothScrollRunnable startScrollBy, byX=" + byX + ", byY=" + byY);
             // Dont start scroll if difference is 0
             if (byX != 0 || byY != 0) {
                 mScroll.forceFinished(true);// TODO check if this can be removed
@@ -1753,7 +1757,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         @Override
         public void run() {
             if (mScroll.isFinished()) {
-                log("scroller is finished, done with smooth scroll");
+                //log("scroller is finished, done with smooth scroll");
                 mDesiredChannelPosition = mSelectedItemPosition;
                 if (mOnAnimationFinishedListener != null) {
                     if (!mOnAnimationFinishedListener.animationFinished()) {
@@ -1831,15 +1835,6 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
          * @param view View to add
          */
         void addChannelIndicatorView(View view) {
-            mActiveChannelIndicatorViews.add(view);
-        }
-
-        /**
-         * Add new time line view to list of active views
-         *
-         * @param view View to add
-         */
-        void addTimeLineView(View view) {
             mActiveChannelIndicatorViews.add(view);
         }
 
@@ -1950,22 +1945,22 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
             LayoutParams lp = null;
             int i;
             // Remove event views
-            for (i = mRecycler.mActiveEventsViews.size() - 1; --i >= 0; ) {
-                v = mRecycler.mActiveEventsViews.get(i);
+            for (i = mActiveEventsViews.size() - 1; --i >= 0; ) {
+                v = mActiveEventsViews.get(i);
                 lp = (LayoutParams) v.getLayoutParams();
                 if (lp.mChannelIndex == channelPosition) {
-                    mRecycler.mActiveEventsViews.remove(i);
-                    mRecycler.recycleEventViews(v);
+                    mActiveEventsViews.remove(i);
+                    recycleEventViews(v);
                     removeViewInLayout(v);
                 }
             }
             // Remove channel indicator views
-            for (i = mRecycler.mActiveChannelIndicatorViews.size() - 1; --i >= 0; ) {
-                v = mRecycler.mActiveChannelIndicatorViews.get(i);
+            for (i = mActiveChannelIndicatorViews.size() - 1; --i >= 0; ) {
+                v = mActiveChannelIndicatorViews.get(i);
                 lp = (LayoutParams) v.getLayoutParams();
                 if (lp.mChannelIndex == channelPosition) {
-                    mRecycler.mActiveChannelIndicatorViews.remove(i);
-                    mRecycler.recycleChannelIndicatorViews(v);
+                    mActiveChannelIndicatorViews.remove(i);
+                    recycleChannelIndicatorViews(v);
                     removeViewInLayout(v);
                 }
             }
@@ -1978,23 +1973,27 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
             View v = null;
             // Check events recycler
             int i;
-            for (i = mRecycler.mActiveEventsViews.size() - 1; --i >= 0; ) {
-                v = mRecycler.mActiveEventsViews.get(i);
+            for (i = mActiveEventsViews.size() - 1; --i >= 0; ) {
+                v = mActiveEventsViews.get(i);
                 if (isViewInvisible(mRectEventsArea, v)) {
-                    mRecycler.mActiveEventsViews.remove(i);
-                    mRecycler.recycleEventViews(v);
+                    mActiveEventsViews.remove(i);
+                    recycleEventViews(v);
                     removeViewInLayout(v);
                 }
             }
             // Check channel indicators recycler
-            for (i = mRecycler.mActiveChannelIndicatorViews.size() - 1; --i >= 0; ) {
-                v = mRecycler.mActiveChannelIndicatorViews.get(i);
+            for (i = mActiveChannelIndicatorViews.size() - 1; --i >= 0; ) {
+                v = mActiveChannelIndicatorViews.get(i);
                 if (isViewInvisible(mRectChannelIndicators, v)) {
-                    mRecycler.mActiveChannelIndicatorViews.remove(i);
-                    mRecycler.recycleChannelIndicatorViews(v);
+                    mActiveChannelIndicatorViews.remove(i);
+                    recycleChannelIndicatorViews(v);
                     removeViewInLayout(v);
                 }
             }
+        }
+
+        ArrayList<View> getActiveEventViews() {
+            return mActiveEventsViews;
         }
     }
 
@@ -2005,17 +2004,5 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     public void setDrawTimeLine(boolean drawTimeLine) {
         this.drawTimeLine = drawTimeLine;
         invalidate();
-    }
-
-    public View getBackgroundView() {
-        return mBackgroundView;
-    }
-
-    public void setBackgroundView(View mBackgroundView) {
-        this.mBackgroundView = mBackgroundView;
-    }
-
-    public int getGuideMode() {
-        return mGuideMode;
     }
 }

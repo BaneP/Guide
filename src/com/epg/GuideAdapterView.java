@@ -1,14 +1,20 @@
 package com.epg;
 
 import android.content.Context;
+import android.graphics.Rect;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.accessibility.AccessibilityEvent;
 
+import java.util.Calendar;
+import java.util.concurrent.TimeUnit;
+
 /**
  * Base adapter view that contains listener interfaces and defined public methods
+ *
+ * @author Branimir Pavlovic
  */
 public abstract class GuideAdapterView<T extends BaseGuideAdapter> extends ViewGroup {
     protected static final String TAG = GuideAdapterView.class.getSimpleName();
@@ -379,6 +385,39 @@ public abstract class GuideAdapterView<T extends BaseGuideAdapter> extends ViewG
         } else {
             return null;
         }
+    }
+
+    /**
+     * @return Calculated difference between two calendars in minutes
+     */
+    protected int calculateDiffInMinutes(Calendar endTime, Calendar startTime) {
+        long diffInMs = Math.abs(endTime.getTimeInMillis() - startTime.getTimeInMillis());
+        return (int) TimeUnit.MILLISECONDS.toMinutes(diffInMs);
+    }
+
+    /**
+     * Calculates Y overlap value of 2 rectangles
+     *
+     * @return Calculated overlap value
+     */
+    protected int calculateYOverlapValue(Rect rect1, Rect rect2) {
+        return Math.max(0, Math.min(rect1.bottom, rect2.bottom)
+                - Math.max(rect1.top, rect2.top));
+    }
+
+    /**
+     * Check is view (at least one pixel of it) is inside the visible area or
+     * not.
+     *
+     * @param view View to check is it visible or not.
+     * @return TRUE if the view is invisible i.e. out of visible screen bounds,
+     * FALSE - if at least one pixel of it is visible.
+     */
+    protected boolean isViewInvisible(Rect desiredRect, View view) {
+        return view == null || view.getLeft() >= desiredRect.right
+                || view.getRight() <= desiredRect.left
+                || view.getTop() >= desiredRect.bottom
+                || view.getBottom() <= desiredRect.top;
     }
 
     protected void log(String msg) {
