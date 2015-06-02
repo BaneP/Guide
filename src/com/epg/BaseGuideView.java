@@ -2005,4 +2005,8 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         this.drawTimeLine = drawTimeLine;
         invalidate();
     }
+
+    Paint getTimeLinePaintText() {
+        return mTimeLinePaintText;
+    }
 }

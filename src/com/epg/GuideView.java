@@ -566,8 +566,9 @@ public class GuideView extends BaseGuideView {
                             resizedPercent));
                 }
                 // If child row is out of screen
-                if (currentY + currentRowHeight + mVerticalDividerHeight >= getHeight()) {
+                if (currentY + currentRowHeight + mVerticalDividerHeight >= mRectEventsArea.bottom) {
                     mLastItemPosition = i;
+                    mRecycler.removeItemsAtPosition(i + 1);
                     break;
                 }
                 // New child row is inside screen so we draw it

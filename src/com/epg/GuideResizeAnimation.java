@@ -1,5 +1,6 @@
 package com.epg;
 
+import android.graphics.Paint;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.Animation;
@@ -16,6 +17,7 @@ import java.util.HashMap;
  */
 public class GuideResizeAnimation extends Animation {
     private WeakReference<BaseGuideView> mGuideViewWeakReference;
+    private WeakReference<Paint> mTimeLinePaintText;
     private float mFromWidthGuide;
     private float mToWidthGuide;
     private WeakReference<HashMap<Integer, GuideEventAnimInfo>> mEventsAnimationInfo;
@@ -23,6 +25,7 @@ public class GuideResizeAnimation extends Animation {
     public GuideResizeAnimation(BaseGuideView guideView, float fromWidthGuide,
             float toWidthGuide, HashMap<Integer, GuideEventAnimInfo> eventsAnimationInfo) {
         this.mGuideViewWeakReference = new WeakReference<BaseGuideView>(guideView);
+        this.mTimeLinePaintText = new WeakReference<Paint>(guideView.getTimeLinePaintText());
         this.mFromWidthGuide = fromWidthGuide;
         this.mToWidthGuide = toWidthGuide;
         this.mEventsAnimationInfo = new WeakReference<HashMap<Integer, GuideEventAnimInfo>>(eventsAnimationInfo);
@@ -34,7 +37,7 @@ public class GuideResizeAnimation extends Animation {
          * Calculate new width of guide
          */
         int width = calculateCurrentValue(mFromWidthGuide, mToWidthGuide, interpolatedTime);
-        final View view = mGuideViewWeakReference.get();
+        final BaseGuideView view = mGuideViewWeakReference.get();
         ViewGroup.LayoutParams p = view.getLayoutParams();
         p.width = width;
         /**
@@ -49,6 +52,7 @@ public class GuideResizeAnimation extends Animation {
                     interpolatedTime);
             params.mLeftCoordinate = calculateCurrentValue(0, animEventInfo.getEndPosition(), interpolatedTime);
         }
+        mTimeLinePaintText.get().setAlpha(calculateCurrentValue(0,255,interpolatedTime));
         view.requestLayout();
     }
 
