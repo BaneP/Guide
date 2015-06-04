@@ -22,6 +22,20 @@ public enum SelectionType implements Parcelable {
         return value;
     }
 
+    public static SelectionType fromValue(int value) {
+        switch (value) {
+        case 0: {
+            return FIXED_ON_SCREEN;
+        }
+        case 1: {
+            return NOT_FIXED_ON_SCREEN;
+        }
+        default: {
+            return FIXED_ON_SCREEN;
+        }
+        }
+    }
+
     @Override
     public int describeContents() {
         return 0;

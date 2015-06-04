@@ -97,6 +97,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      */
     private int mTimeLineTextSize;
     private Paint mTimeLinePaintText;
+    private Paint mTimeLinePaintLines;
     private Rect mTimeLineRectText;
     /**
      * Draw time line in dispatchDraw() or not
@@ -107,6 +108,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      */
     private Rect mTimeLineProgressIndicatorRect;
     protected Drawable mTimeLineProgressIndicator;
+    protected TimeLineDrawType mTimeLineDrawType;
     /**
      * Time line indicator text format
      */
@@ -361,13 +363,12 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
                 if (format != null && !format.equals("")) {
                     mTimeLineTextFormat = format;
                 }
+                int value = a.getInt(R.styleable.BaseGuideView_timeLineDrawType, TimeLineDrawType.DRAW_OVER_EVENTS
+                        .getValue());
+                mTimeLineDrawType = TimeLineDrawType.fromValue(value);
                 mTimeLineTextSize = a.getDimensionPixelSize(R.styleable.BaseGuideView_timeLineTextSize, 20);
-                int sel = a.getInt(R.styleable.BaseGuideView_selectionType, SelectionType.FIXED_ON_SCREEN.getValue());
-                if (sel == SelectionType.FIXED_ON_SCREEN.getValue()) {
-                    mSelectionType = SelectionType.FIXED_ON_SCREEN;
-                } else if (sel == SelectionType.NOT_FIXED_ON_SCREEN.getValue()) {
-                    mSelectionType = SelectionType.NOT_FIXED_ON_SCREEN;
-                }
+                value = a.getInt(R.styleable.BaseGuideView_selectionType, SelectionType.FIXED_ON_SCREEN.getValue());
+                mSelectionType = SelectionType.fromValue(value);
                 mSelectionRelativePosition = a.getFloat(R.styleable.BaseGuideView_selectionFixedValue,
                         DEFAULT_SELECTION_EVENT_POSITION);
             } finally {
@@ -401,6 +402,10 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         mTimeLinePaintText = new Paint(Paint.ANTI_ALIAS_FLAG);
         mTimeLinePaintText.setColor(Color.WHITE);
         mTimeLinePaintText.setTextSize(mTimeLineTextSize);
+        mTimeLinePaintLines = new Paint(Paint.ANTI_ALIAS_FLAG);
+        mTimeLinePaintLines.setColor(Color.DKGRAY);
+        mTimeLinePaintLines.setStyle(Paint.Style.STROKE);
+        mTimeLinePaintLines.setStrokeWidth(1);
         mTimeLineRectText = new Rect();
         mTimeLineProgressIndicatorRect = new Rect();
     }
@@ -590,12 +595,13 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     @Override
     protected void dispatchDraw(Canvas canvas) {
         super.dispatchDraw(canvas);
+        canvas.clipRect(mRectChannelIndicators.right, 0, mRectTimeLine.right, mRectEventsArea.bottom);
         // Draws selector on top of Guide view
         drawSelector(canvas);
         //Draw time line and time line indicator
         if (drawTimeLine) {
-            drawTimeLine(canvas);
             drawTimeLineIndicator(canvas);
+            drawTimeLine(canvas);
             removeCallbacks(mRefreshTimeLineRunnable);
             postDelayed(mRefreshTimeLineRunnable, TIMELINE_INDICATOR_REFRESH_INTERVAL);
         }
@@ -654,15 +660,27 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
             } else {
                 calendar.add(Calendar.MINUTE, 60 - calendar.get(Calendar.MINUTE));
             }
+            canvas.drawLine(mTimeLineProgressIndicatorRect.right, mRectTimeLine.top, mRectTimeLine.right,
+                    mRectTimeLine.top,
+                    mTimeLinePaintLines);
             int pixelOffset = calculateDiffInMinutes(calendar, mStartTime) *
                     mOneMinuteWidth - mCurrentOffsetX;
             String timeText;
-            final int yCoordinate = mRectTimeLine.height() / 2 + mTimeLineTextSize / 2;
+            final int yOffsetLine = mRectTimeLine.height() / 7;
+            final int yCoordinate = yOffsetLine * 2 + (int) mTimeLinePaintText.getTextSize();
+
             while (pixelOffset < mRectEventsArea.width()) {
+                //Draw vertical time line
+                if (mTimeLineProgressIndicatorRect.right < mRectTimeLine.left + pixelOffset) {
+                    canvas.drawLine(mRectTimeLine.left + pixelOffset, mRectTimeLine.top,
+                            mRectTimeLine.left + pixelOffset,
+                            yOffsetLine, mTimeLinePaintLines);
+                }
+                //Draw text
                 timeText = mTimeLineFormater.format(calendar.getTime());
                 mTimeLinePaintText.getTextBounds(timeText, 0,
                         timeText.length(), mTimeLineRectText);
-                canvas.drawText(timeText, mRectTimeLine.left + pixelOffset, yCoordinate,
+                canvas.drawText(timeText, mRectTimeLine.left + pixelOffset + yOffsetLine, yCoordinate,
                         mTimeLinePaintText);
                 calendar.add(Calendar.MINUTE, 30);
                 pixelOffset += 30 * mOneMinuteWidth;
@@ -678,13 +696,26 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
             Calendar calendar = Calendar.getInstance();
             int pixelOffset = calculateDiffInMinutes(calendar, mStartTime) *
                     mOneMinuteWidth - mCurrentOffsetX;
+
             mTimeLineProgressIndicatorRect.right = mRectTimeLine.left + pixelOffset;
-            mTimeLineProgressIndicatorRect.top = mRectEventsArea.top;
-            mTimeLineProgressIndicatorRect.bottom = mRectEventsArea.bottom;
-            pixelOffset = mTimeLineProgressIndicatorRect.right - mTimeLineProgressIndicator
-                    .getIntrinsicWidth();
-            mTimeLineProgressIndicatorRect.left =
-                    pixelOffset < mRectEventsArea.left ? mRectEventsArea.left : pixelOffset;
+            mTimeLineProgressIndicatorRect.left = mRectTimeLine.left;
+            switch (mTimeLineDrawType) {
+            case DRAW_OVER_EVENTS: {
+                mTimeLineProgressIndicatorRect.top = mRectEventsArea.top;
+                mTimeLineProgressIndicatorRect.bottom = mRectEventsArea.bottom;
+                break;
+            }
+            case DRAW_OVER_GUIDE: {
+                mTimeLineProgressIndicatorRect.top = mRectTimeLine.top;
+                mTimeLineProgressIndicatorRect.bottom = mRectEventsArea.bottom;
+                break;
+            }
+            case DRAW_OVER_TIME_LINE: {
+                mTimeLineProgressIndicatorRect.top = mRectTimeLine.top;
+                mTimeLineProgressIndicatorRect.bottom = mRectTimeLine.bottom;
+                break;
+            }
+            }
             //Draw time line indicator only if it is visible
             if (canvas.getClipBounds().intersect(mTimeLineProgressIndicatorRect)) {
                 mTimeLineProgressIndicator.setBounds(mTimeLineProgressIndicatorRect);

@@ -15,5 +15,10 @@
             <enum name="notFixed" value="1"/>
         </attr>
         <attr name="selectionFixedValue" format="float"/>
+        <attr name="timeLineDrawType">
+            <enum name="drawOverEvents" value="0"/>
+            <enum name="drawOverTimeLine" value="1"/>
+            <enum name="drawOverWholeGuide" value="2"/>
+        </attr>
     </declare-styleable>
 </resources>
