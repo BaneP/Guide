@@ -390,7 +390,7 @@ public abstract class GuideAdapterView<T extends BaseGuideAdapter> extends ViewG
     /**
      * @return Calculated difference between two calendars in minutes
      */
-    protected int calculateDiffInMinutes(Calendar endTime, Calendar startTime) {
+    public static int calculateDiffInMinutes(Calendar endTime, Calendar startTime) {
         long diffInMs = Math.abs(endTime.getTimeInMillis() - startTime.getTimeInMillis());
         return (int) TimeUnit.MILLISECONDS.toMinutes(diffInMs);
     }

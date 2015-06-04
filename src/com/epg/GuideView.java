@@ -391,7 +391,7 @@ public class GuideView extends BaseGuideView {
             if (params instanceof LinearLayout.LayoutParams) {
                 ((LinearLayout.LayoutParams) params).gravity = Gravity.NO_GRAVITY;
             } else if (params instanceof RelativeLayout.LayoutParams) {
-                ((RelativeLayout.LayoutParams) params).removeRule(RelativeLayout.ALIGN_PARENT_RIGHT);
+                ((RelativeLayout.LayoutParams) params).addRule(RelativeLayout.ALIGN_PARENT_RIGHT, 0);
             } else if (params instanceof FrameLayout.LayoutParams) {
                 ((FrameLayout.LayoutParams) params).gravity = Gravity.NO_GRAVITY;
             }
@@ -416,7 +416,9 @@ public class GuideView extends BaseGuideView {
         super.dispatchDraw(canvas);
         //Draw divider between channel indicators and events
         if (mRows != null && mRows.size() > 0) {
-            canvas.drawRect(mRectChannelIndicators.right, mRows.get(0).getTop(), mRectChannelIndicators
+            canvas.drawRect(mRectChannelIndicators.right, mRows.get(0).getTop() < mRectEventsArea.top ? mRectEventsArea
+                            .top : mRows.get(0).getTop(),
+                    mRectChannelIndicators
                             .right + mHorizontalDividerWidth, mRows.get(mRows.size() - 1).getBottom(),
                     mDividerOverlayPaint);
         }
@@ -524,7 +526,7 @@ public class GuideView extends BaseGuideView {
             // Calculate events area middle point
             if (mEventsAreaMiddlePoint == INVALID_POSITION) {
                 mEventsAreaMiddlePoint = mRectEventsArea.top
-                        + (mRectEventsArea.bottom - mRectEventsArea.top) / 2;
+                        + mRectEventsArea.height() / 2;
             }
 
             // Calculate first child top invisible part
@@ -585,7 +587,7 @@ public class GuideView extends BaseGuideView {
                 && mSelectedItemPosition != getSelectedItemChannelPosition()) {
             unselectSeletedViewWithoutCallback();
         }
-        //log("calculateRowPositions(), ROWS=" + mRows.toString());
+        log("calculateRowPositions(), ROWS=" + mRows.toString());
     }
 
     /**
@@ -600,14 +602,21 @@ public class GuideView extends BaseGuideView {
         for (int i = 0; i < mRows.size(); i++) {
             guideRowInfo = mRows.get(i);
             if (layoutType == LAYOUT_TYPE_CHANNEL_INDICATOR) {
-                final View attached = findItemAttachedToWindow(
+                View attached = findItemAttachedToWindow(
                         LAYOUT_TYPE_CHANNEL_INDICATOR,
                         guideRowInfo.getChannelIndex(), INVALID_POSITION);
-                layoutChildView(layoutType, attached,
+                attached = layoutChildView(layoutType, attached,
                         guideRowInfo.getHeight(), guideRowInfo.getTop(),
                         mRectChannelIndicators.left,
                         guideRowInfo.getResizedPercent(),
                         guideRowInfo.getChannelIndex(), INVALID_POSITION);
+                //Mark central channel indicator as selected
+                if (mScrollState == SCROLL_STATE_NORMAL && guideRowInfo.getChannelIndex() ==
+                        mSelectedItemPosition) {
+                    attached.setSelected(true);
+                } else {
+                    attached.setSelected(false);
+                }
 
             } else {
                 // Get first child position based on current scroll value

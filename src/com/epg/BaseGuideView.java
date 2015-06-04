@@ -41,7 +41,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     /**
      * How much expanded channel is larger than non expanded
      */
-    public static final int BIG_CHANNEL_MULTIPLIER = 3;
+    public static final float BIG_CHANNEL_MULTIPLIER = 2.2f;
     /**
      * Default width of one minute in pixels
      */
@@ -374,7 +374,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
                 a.recycle();
             }
         }
-        if (mSelector != null) {
+        if (mSelector != null && mSelector instanceof BitmapDrawable) {
             mSelectorBitmap = ((BitmapDrawable) mSelector).getBitmap();
         }
 
@@ -469,8 +469,10 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
 
         // Initialize some elements from adapter
         if (mAdapter != null) {
-            mAdapter.registerDataSetObserver(mDataSetObserver);
-            mAdapterRegistered = true;
+            if (isShown()) {
+                mAdapter.registerDataSetObserver(mDataSetObserver);
+                mAdapterRegistered = true;
+            }
             refreshDataFromAdapter(true);
         }
         requestLayout();
@@ -536,7 +538,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
         final int viewWidth = getMeasuredWidth();
         final int viewHeight = getMeasuredHeight();
-        //log("ONMEASURE viewWidth=" + viewWidth + ", viewHeight=" + viewHeight);
+        log("ONMEASURE viewWidth=" + viewWidth + ", viewHeight=" + viewHeight);
 
         // Calculate rect objects for three different areas
         mRectTimeLine = new Rect();
@@ -580,7 +582,9 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         if (mCurrentOffsetY == 0) {
             mCurrentOffsetY = getTopOffsetBounds();
         }
-
+        log("mChannelRowHeight=" + mChannelRowHeight + ", mChannelRowHeightExpanded=" + mChannelRowHeightExpanded + ", "
+                + "mRectEventsArea=" + mRectEventsArea.toString() + ", mRectSelectedRowArea=" + mRectSelectedRowArea
+                .toString());
     }
 
     @Override
@@ -603,12 +607,13 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      * @param canvas
      */
     private void drawSelector(Canvas canvas) {
-        if (mSelectedView != null) {
+
+        if (mSelectedView != null && hasFocus()) {
             //Set selector rect to be above selected view
-            mSelectorRect.left = mSelectedView.getLeft();
-            mSelectorRect.right = mSelectedView.getRight();
-            mSelectorRect.top = mSelectedView.getTop();
-            mSelectorRect.bottom = mSelectedView.getBottom();
+            mSelectorRect.left = mSelectedView.getLeft() - mHorizontalDividerWidth;
+            mSelectorRect.right = mSelectedView.getRight() + mHorizontalDividerWidth;
+            mSelectorRect.top = mSelectedView.getTop() - mVerticalDividerHeight;
+            mSelectorRect.bottom = mSelectedView.getBottom() + mVerticalDividerHeight;
             //If selector bitmap is not null we use bitmap as selector
             if (mSelectorBitmap != null) {
                 Rect src = null;
@@ -711,6 +716,10 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         if (blockLayoutRequests) {
             return;
         }
+        //If view is not measured dont do anything
+        if (mRectEventsArea == null) {
+            return;
+        }
         mBlockLayoutRequests = true;
         try {
             if (mAdapter != null) {
@@ -805,9 +814,9 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
             // Expanded is not visible, it is above visible area
             else {
                 // We must take into account expanded item
-                mFirstItemPosition = mCurrentOffsetY
+                mFirstItemPosition = (int) (mCurrentOffsetY
                         / (mChannelRowHeight + mVerticalDividerHeight)
-                        - (BIG_CHANNEL_MULTIPLIER - 1);
+                        - (BIG_CHANNEL_MULTIPLIER - 1));
             }
         }
         /**
@@ -1155,9 +1164,9 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      * mCurrentOffsetY can be)
      */
     private int getBottomOffsetBounds() {
-        return computeVerticalScrollRange() - getHeight() + getPaddingBottom()
+        return (int) (computeVerticalScrollRange() - getHeight() + getPaddingBottom()
                 + getPaddingTop() + (mScrollState == SCROLL_STATE_FAST_SCROLL ? (mChannelRowHeight
-                + mVerticalDividerHeight) * BIG_CHANNEL_MULTIPLIER / 2 : 0);
+                + mVerticalDividerHeight) * BIG_CHANNEL_MULTIPLIER / 2 : 0));
     }
 
     /**
@@ -1636,9 +1645,9 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
                             + (newChannelPosition - mSelectedItemPosition)
                             * (mChannelRowHeight + mVerticalDividerHeight);
                 } else {
-                    return (newChannelPosition - (mNumberOfVisibleChannels
+                    return (int) ((newChannelPosition - (mNumberOfVisibleChannels
                             + BIG_CHANNEL_MULTIPLIER - 1) / 2)
-                            * (mChannelRowHeight + mVerticalDividerHeight);
+                            * (mChannelRowHeight + mVerticalDividerHeight));
                 }
             }
             return INVALID_POSITION;
