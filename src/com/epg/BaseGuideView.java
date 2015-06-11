@@ -70,7 +70,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     /**
      * Duration of smooth left/right scroll animation
      */
-    public static final int SMOOTH_LEFT_RIGHT_DURATION = 300;
+    public static final int SMOOTH_LEFT_RIGHT_DURATION = 500;
     /**
      * Refresh interval of smooth scroll animations
      */
@@ -98,7 +98,6 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     private int mTimeLineTextSize;
     private Paint mTimeLinePaintText;
     private Paint mTimeLinePaintLines;
-    private Rect mTimeLineRectText;
     /**
      * Draw time line in dispatchDraw() or not
      */
@@ -106,9 +105,11 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     /**
      * Time line progress indicator drawable and its rect
      */
-    private Rect mTimeLineProgressIndicatorRect;
+    protected Rect mTimeLineProgressIndicatorRect;
     protected Drawable mTimeLineProgressIndicator;
     protected TimeLineDrawType mTimeLineDrawType;
+    protected boolean mTimeLineVisible = false;
+    protected Rect mTimeLineRestrictedArea;
     /**
      * Time line indicator text format
      */
@@ -143,6 +144,10 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     protected Rect mRectChannelIndicators;
     protected Rect mRectEventsArea;
     protected Rect mRectSelectedRowArea;
+    /**
+     * Vertical offset of expanded channel from the middle
+     */
+    protected int mEventsVerticalOffset = 0;
     /**
      * Helper rectangle that is used for calculating row height in calculateRowHeight() method
      */
@@ -212,6 +217,10 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      * Object for guide scrolling horizontally and vertically.
      */
     Scroller mScroll;
+    /**
+     * Previous width and height of guide view
+     */
+    private int mPreviousWidth = INVALID_POSITION, mPreviousHeight = INVALID_POSITION;
 
     /**
      * Internal listener for end of scroll runnable.
@@ -406,7 +415,6 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         mTimeLinePaintLines.setColor(Color.DKGRAY);
         mTimeLinePaintLines.setStyle(Paint.Style.STROKE);
         mTimeLinePaintLines.setStrokeWidth(1);
-        mTimeLineRectText = new Rect();
         mTimeLineProgressIndicatorRect = new Rect();
     }
 
@@ -464,7 +472,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         // Clear all necessary data
         mAdapter = adapter;
         mCurrentOffsetX = 0;
-        mCurrentOffsetY = 0;
+        mCurrentOffsetY = INVALID_POSITION;
         mSelectedView = null;
         mFirstItemPosition = 0;
         mLastItemPosition = INVALID_POSITION;
@@ -498,7 +506,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         // layout pass.
         if (getMeasuredHeight() > 0) {
             mTotalHeight = calculateTotalHeight();
-            if (calculateYCoordinate) {
+            if (calculateYCoordinate && isShown()) {
                 mCurrentOffsetY = getTopOffsetBounds();
             }
         } else {
@@ -544,6 +552,12 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         final int viewWidth = getMeasuredWidth();
         final int viewHeight = getMeasuredHeight();
         log("ONMEASURE viewWidth=" + viewWidth + ", viewHeight=" + viewHeight);
+        //There is no need for change if dimension is the same
+        if (mPreviousWidth == viewWidth && mPreviousHeight == viewHeight) {
+            return;
+        }
+        mPreviousWidth = viewWidth;
+        mPreviousHeight = viewHeight;
 
         // Calculate rect objects for three different areas
         mRectTimeLine = new Rect();
@@ -560,10 +574,11 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
                 - (mNumberOfVisibleChannels - 1) * mVerticalDividerHeight;
         mChannelRowHeightExpanded -= mVerticalDividerHeight;
         // Setup rect for sections
-        mRectTimeLine.set(mChannelRowHeight, 0, viewWidth, mChannelRowHeight);
-        mRectChannelIndicators.set(0, mChannelRowHeight, mChannelRowHeight - mHorizontalDividerWidth,
-                viewHeight);
-        mRectEventsArea.set(mChannelRowHeight, mChannelRowHeight, viewWidth,
+        mRectChannelIndicators.set(0, mChannelRowHeight,
+                (int) ((float) mChannelRowHeight * 1.4f), viewHeight);
+        mRectTimeLine.set(mRectChannelIndicators.right + mHorizontalDividerWidth, 0, viewWidth, mChannelRowHeight);
+
+        mRectEventsArea.set(mRectChannelIndicators.right + mHorizontalDividerWidth, mChannelRowHeight, viewWidth,
                 viewHeight);
 
         //Set padding so no event can be shown below time line
@@ -572,8 +587,8 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         // Setup selected row area
         final int selectedTop = mRectEventsArea.top
                 + (mNumberOfVisibleChannels / 2)
-                * (mChannelRowHeight + mVerticalDividerHeight);
-        mRectSelectedRowArea.set(mChannelRowHeight, selectedTop, viewWidth,
+                * (mChannelRowHeight + mVerticalDividerHeight) + mEventsVerticalOffset;
+        mRectSelectedRowArea.set(mRectEventsArea.left, selectedTop, mRectEventsArea.right,
                 selectedTop + mChannelRowHeightExpanded);
 
         if (mSelectionType == SelectionType.FIXED_ON_SCREEN) {
@@ -584,7 +599,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         if (mTotalHeight == 0 && mAdapter != null) {
             mTotalHeight = calculateTotalHeight();
         }
-        if (mCurrentOffsetY == 0) {
+        if (mCurrentOffsetY == INVALID_POSITION) {
             mCurrentOffsetY = getTopOffsetBounds();
         }
         log("mChannelRowHeight=" + mChannelRowHeight + ", mChannelRowHeightExpanded=" + mChannelRowHeightExpanded + ", "
@@ -604,6 +619,8 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
             drawTimeLine(canvas);
             removeCallbacks(mRefreshTimeLineRunnable);
             postDelayed(mRefreshTimeLineRunnable, TIMELINE_INDICATOR_REFRESH_INTERVAL);
+        } else {
+            mTimeLineVisible = false;
         }
     }
 
@@ -639,6 +656,9 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
             else if (mSelector != null) {
                 if (mSelectorRect.left < mRectEventsArea.left) {
                     mSelectorRect.left = mRectEventsArea.left;
+                }
+                if (mSelectorRect.right > mRectEventsArea.right) {
+                    mSelectorRect.right = mRectEventsArea.right;
                 }
                 mSelector.setBounds(mSelectorRect);
                 mSelector.draw(canvas);
@@ -677,11 +697,13 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
                             yOffsetLine, mTimeLinePaintLines);
                 }
                 //Draw text
-                timeText = mTimeLineFormater.format(calendar.getTime());
-                mTimeLinePaintText.getTextBounds(timeText, 0,
-                        timeText.length(), mTimeLineRectText);
-                canvas.drawText(timeText, mRectTimeLine.left + pixelOffset + yOffsetLine, yCoordinate,
-                        mTimeLinePaintText);
+                if (mTimeLineRestrictedArea == null || !mTimeLineRestrictedArea
+                        .contains(mRectTimeLine.left + pixelOffset
+                                + yOffsetLine, yCoordinate)) {
+                    timeText = mTimeLineFormater.format(calendar.getTime());
+                    canvas.drawText(timeText, mRectTimeLine.left + pixelOffset + yOffsetLine, yCoordinate,
+                            mTimeLinePaintText);
+                }
                 calendar.add(Calendar.MINUTE, 30);
                 pixelOffset += 30 * mOneMinuteWidth;
             }
@@ -712,7 +734,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
             }
             case DRAW_OVER_TIME_LINE: {
                 mTimeLineProgressIndicatorRect.top = mRectTimeLine.top;
-                mTimeLineProgressIndicatorRect.bottom = mRectTimeLine.bottom;
+                mTimeLineProgressIndicatorRect.bottom = mRectTimeLine.bottom - mVerticalDividerHeight;
                 break;
             }
             }
@@ -720,6 +742,9 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
             if (canvas.getClipBounds().intersect(mTimeLineProgressIndicatorRect)) {
                 mTimeLineProgressIndicator.setBounds(mTimeLineProgressIndicatorRect);
                 mTimeLineProgressIndicator.draw(canvas);
+                mTimeLineVisible = true;
+            } else {
+                mTimeLineVisible = false;
             }
         }
     }
@@ -735,7 +760,9 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     protected void onLayout(boolean changed, int l, int t, int r, int b) {
         mInLayout = true;
         // Layout children only if guide view changed its bounds
+        //        if (changed) {
         layoutChildren();
+        //        }
         mInLayout = false;
     }
 
@@ -784,7 +811,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     /**
      * Updates screen while selection is moving or scrolling, this is used for drawing every frame
      */
-    void update() {
+    public void update() {
         mRecycler.removeInvisibleItems();
         awakenScrollBars();
         layoutChildren();
@@ -1383,7 +1410,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      * @param desiredEventIndex Event index
      * @return Returns current absolute event position on screen
      */
-    private int getEventPositionOnScreen(View nextView, int desiredEventIndex) {
+    protected int getEventPositionOnScreen(View nextView, int desiredEventIndex) {
         if (nextView != null) {
             return nextView.getLeft();
         } else {
@@ -2046,7 +2073,53 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         invalidate();
     }
 
-    Paint getTimeLinePaintText() {
+    public Paint getTimeLinePaintText() {
         return mTimeLinePaintText;
+    }
+
+    public Rect getTimeLineRestrictedArea() {
+        return mTimeLineRestrictedArea;
+    }
+
+    public void setTimeLineRestrictedArea(Rect mTimeLineRestrictedArea) {
+        this.mTimeLineRestrictedArea = mTimeLineRestrictedArea;
+        invalidate();
+    }
+
+    public Rect getRectTimeLine() {
+        return new Rect(mRectTimeLine);
+    }
+
+    public Rect getRectChannelIndicators() {
+        return new Rect(mRectChannelIndicators);
+    }
+
+    public Rect getRectEventsArea() {
+        return new Rect(mRectEventsArea);
+    }
+
+    public Rect getRectSelectedRowArea() {
+        return new Rect(mRectSelectedRowArea);
+    }
+
+    public int getEventsVerticalOffset() {
+        return mEventsVerticalOffset;
+    }
+
+    public void setEventsVerticalOffset(int mEventsVerticalOffset) {
+        this.mEventsVerticalOffset = mEventsVerticalOffset;
+        requestLayout();
+    }
+
+    public int getOneMinuteWidth() {
+        return mOneMinuteWidth;
+    }
+
+    public int getChannelRowHeight() {
+        return mChannelRowHeight;
+    }
+
+    public int getChannelRowHeightExpanded() {
+        return mChannelRowHeightExpanded;
     }
 }

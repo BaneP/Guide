@@ -21,14 +21,27 @@ public class GuideResizeAnimation extends Animation {
     private float mFromWidthGuide;
     private float mToWidthGuide;
     private WeakReference<HashMap<Integer, GuideEventAnimInfo>> mEventsAnimationInfo;
+    private WeakReference<View> mBackgroundViewWeakReference;
+    private float mStartAlpha;
+    private float mEndAlpha;
+    private boolean runAlphaAnim = false;
 
-    public GuideResizeAnimation(BaseGuideView guideView, float fromWidthGuide,
-            float toWidthGuide, HashMap<Integer, GuideEventAnimInfo> eventsAnimationInfo) {
+    public GuideResizeAnimation(GuideView guideView, float fromWidthGuide,
+            float toWidthGuide, HashMap<Integer, GuideEventAnimInfo> eventsAnimationInfo, float startAlpha,
+            float endAlpha) {
         this.mGuideViewWeakReference = new WeakReference<BaseGuideView>(guideView);
         this.mTimeLinePaintText = new WeakReference<Paint>(guideView.getTimeLinePaintText());
         this.mFromWidthGuide = fromWidthGuide;
         this.mToWidthGuide = toWidthGuide;
         this.mEventsAnimationInfo = new WeakReference<HashMap<Integer, GuideEventAnimInfo>>(eventsAnimationInfo);
+        if (guideView.getBackgroundView() != null) {
+            mBackgroundViewWeakReference = new WeakReference<View>(guideView.getBackgroundView());
+            mStartAlpha = startAlpha;
+            mEndAlpha = endAlpha;
+        }
+        if (mBackgroundViewWeakReference != null && mBackgroundViewWeakReference.get() != null) {
+            runAlphaAnim = true;
+        }
     }
 
     @Override
@@ -52,7 +65,11 @@ public class GuideResizeAnimation extends Animation {
                     interpolatedTime);
             params.mLeftCoordinate = calculateCurrentValue(0, animEventInfo.getEndPosition(), interpolatedTime);
         }
-        mTimeLinePaintText.get().setAlpha(calculateCurrentValue(0,255,interpolatedTime));
+        mTimeLinePaintText.get().setAlpha(calculateCurrentValue(0, 255, interpolatedTime));
+        if (runAlphaAnim) {
+            mBackgroundViewWeakReference.get()
+                    .setAlpha(calculateCurrentValue(mStartAlpha, mEndAlpha, interpolatedTime));
+        }
         view.requestLayout();
     }
 

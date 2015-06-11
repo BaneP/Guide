@@ -1,7 +1,6 @@
 package com.epg;
 
 import android.view.View;
-import android.view.ViewGroup;
 import android.view.animation.Animation;
 import android.view.animation.Transformation;
 import android.view.animation.TranslateAnimation;
@@ -20,11 +19,9 @@ public class GuideOpenCloseAnimation extends TranslateAnimation {
     private float mStartAlpha;
     private float mEndAlpha;
 
-    public GuideOpenCloseAnimation(GuideView guideView, float startAlpha, float endAlpha, boolean open) {
-        super(Animation.ABSOLUTE, open ? guideView.getMeasuredWidth() : 0, Animation.ABSOLUTE,
-                open ? 0 : guideView.getMeasuredWidth(),
-                Animation.ABSOLUTE, 0, Animation.ABSOLUTE, 0);
-        if (guideView.getParent() != null && guideView.getParent() instanceof ViewGroup) {
+    public GuideOpenCloseAnimation(GuideView guideView, float startX, float endX, float startAlpha, float endAlpha) {
+        super(Animation.ABSOLUTE, startX, Animation.ABSOLUTE, endX, Animation.ABSOLUTE, 0, Animation.ABSOLUTE, 0);
+        if (guideView.getBackgroundView() != null) {
             mBackgroundViewWeakReference = new WeakReference<View>(guideView.getBackgroundView());
             mStartAlpha = startAlpha;
             mEndAlpha = endAlpha;
