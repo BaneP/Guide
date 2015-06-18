@@ -1,6 +1,5 @@
 package com.epg;
 
-import android.database.DataSetObserver;
 import android.view.View;
 import android.view.ViewGroup;
 
@@ -18,7 +17,7 @@ public interface IGuideAdapter {
      *
      * @param observer the object that gets notified when the data set changes.
      */
-    void registerDataSetObserver(DataSetObserver observer);
+    void registerDataSetObserver(GuideDataSetObserver observer);
 
     /**
      * Unregister an observer that has previously been registered with this
@@ -26,7 +25,7 @@ public interface IGuideAdapter {
      *
      * @param observer the object to unregister.
      */
-    void unregisterDataSetObserver(DataSetObserver observer);
+    void unregisterDataSetObserver(GuideDataSetObserver observer);
 
     /**
      * How many items are in the data set represented by this Adapter.

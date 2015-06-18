@@ -2,7 +2,6 @@ package com.epg;
 
 import android.content.Context;
 import android.content.res.TypedArray;
-import android.database.DataSetObserver;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -70,7 +69,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     /**
      * Duration of smooth left/right scroll animation
      */
-    public static final int SMOOTH_LEFT_RIGHT_DURATION = 500;
+    public static final int SMOOTH_LEFT_RIGHT_DURATION = 350;
     /**
      * Refresh interval of smooth scroll animations
      */
@@ -109,7 +108,15 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     protected Drawable mTimeLineProgressIndicator;
     protected TimeLineDrawType mTimeLineDrawType;
     protected boolean mTimeLineVisible = false;
+    /**
+     * Time line text should not enter this area
+     */
     protected Rect mTimeLineRestrictedArea;
+
+    /**
+     * Set it if time line indicator should be fixed width
+     */
+    protected int mTimeLineSpecificOffset = INVALID_POSITION;
     /**
      * Time line indicator text format
      */
@@ -129,8 +136,8 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     /**
      * Current scrolled X and Y values
      */
-    protected int mCurrentOffsetX;
-    protected int mCurrentOffsetY;
+    int mCurrentOffsetX;
+    int mCurrentOffsetY;
 
     /**
      * Index of expanded channel, used while in fast scroll state
@@ -312,9 +319,29 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
     /**
      * Observer for guide adapter
      */
-    private DataSetObserver mDataSetObserver = new DataSetObserver() {
+    private GuideDataSetObserver mDataSetObserver = new GuideDataSetObserver() {
+
         @Override
-        public void onChanged() {
+        public void onChangedServiceList() {
+            refreshDataFromAdapter(false);
+            unselectSeletedViewWithoutCallback();
+            redrawItems();
+        }
+
+        @Override
+        public void onChangedEventList(int channelIndex) {
+            log("GuideDataSetObserver onChangedEventList " + channelIndex);
+            if (channelIndex == mSelectedItemPosition) {
+                unselectSeletedViewWithoutCallback();
+            }
+            //Refresh guide only if event is visible on screen
+            if (channelIndex >= mFirstItemPosition && channelIndex <= mLastItemPosition) {
+                redrawItems(channelIndex);
+            }
+        }
+
+        @Override
+        public void onChangedStartOrEndTime() {
             refreshDataFromAdapter(false);
             unselectSeletedViewWithoutCallback();
             redrawItems();
@@ -538,7 +565,7 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         if (eventPosition > INVALID_POSITION) {
             //TODO
         }
-        update();
+        redrawItems();
     }
 
     @Override
@@ -715,9 +742,14 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      */
     private void drawTimeLineIndicator(Canvas canvas) {
         if (mTimeLineProgressIndicator != null && mStartTime != null) {
-            Calendar calendar = Calendar.getInstance();
-            int pixelOffset = calculateDiffInMinutes(calendar, mStartTime) *
-                    mOneMinuteWidth - mCurrentOffsetX;
+            int pixelOffset;
+            if (mTimeLineSpecificOffset == INVALID_POSITION) {
+                Calendar calendar = Calendar.getInstance();
+                pixelOffset = calculateDiffInMinutes(calendar, mStartTime) *
+                        mOneMinuteWidth - mCurrentOffsetX;
+            } else {
+                pixelOffset = mTimeLineSpecificOffset;
+            }
 
             mTimeLineProgressIndicatorRect.right = mRectTimeLine.left + pixelOffset;
             mTimeLineProgressIndicatorRect.left = mRectTimeLine.left;
@@ -758,18 +790,19 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
 
     @Override
     protected void onLayout(boolean changed, int l, int t, int r, int b) {
+        log("ONLAYOUT changed=" + changed);
         mInLayout = true;
         // Layout children only if guide view changed its bounds
-        //        if (changed) {
-        layoutChildren();
-        //        }
+        if (changed) {
+            layoutChildren();
+        }
         mInLayout = false;
     }
 
     /**
      * Position and draw children on the screen
      */
-    private void layoutChildren() {
+    void layoutChildren() {
         final boolean blockLayoutRequests = mBlockLayoutRequests;
         if (blockLayoutRequests) {
             return;
@@ -793,6 +826,30 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         }
     }
 
+    private void layoutChildren(int channelIndex) {
+        final boolean blockLayoutRequests = mBlockLayoutRequests;
+        if (blockLayoutRequests) {
+            return;
+        }
+        //If view is not measured dont do anything
+        if (mRectEventsArea == null) {
+            return;
+        }
+        mBlockLayoutRequests = true;
+        try {
+            if (mAdapter != null) {
+                //log("layoutChildren CURRENT OFFSET Y" + mCurrentOffsetY);
+                calculateRowPositions();
+                layoutEvents(channelIndex);
+                layoutChannelIndicators();
+            }
+        } finally {
+            if (!blockLayoutRequests) {
+                mBlockLayoutRequests = false;
+            }
+        }
+    }
+
     /**
      * Position channel indicators
      */
@@ -802,6 +859,11 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
      * Position guide events
      */
     protected abstract void layoutEvents();
+
+    /**
+     * Position guide events for desired channel index
+     */
+    protected abstract void layoutEvents(int channelIndex);
 
     /**
      * Recalculates row positions
@@ -826,6 +888,18 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         mRecycler.moveAllViewsToRecycle();
         layoutChildren();
         invalidate();
+    }
+
+    /**
+     * Reposition and redraw items. You may want to call this method after the
+     * data provider changes.
+     */
+    public void redrawItems(int channelIndex) {
+        if (channelIndex >= mFirstItemPosition && channelIndex <= mLastItemPosition) {
+            mRecycler.moveAllViewsToRecycleForDesiredChannel(channelIndex);
+            layoutChildren(channelIndex);
+            invalidate();
+        }
     }
 
     /**
@@ -1985,6 +2059,22 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         }
 
         /**
+         * Move all views from active views to recycler views
+         */
+        void moveAllViewsToRecycleForDesiredChannel(int channelIndex) {
+            View v;
+            // Recycle event views
+            for (int i = mActiveEventsViews.size() - 1; i >= 0; i--) {
+                v = mActiveEventsViews.get(i);
+                if (((LayoutParams) v.getLayoutParams()).mChannelIndex == channelIndex) {
+                    recycleEventViews(v);
+                    removeViewInLayout(v);
+                    mActiveEventsViews.remove(i);
+                }
+            }
+        }
+
+        /**
          * Clear all views from cache, this method should be called on setting
          * new adapter to GridView
          */
@@ -2062,6 +2152,35 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
         ArrayList<View> getActiveEventViews() {
             return mActiveEventsViews;
         }
+
+        public ArrayList<View> getActiveChannelIndicatorViews() {
+            return mActiveChannelIndicatorViews;
+        }
+    }
+
+    /**
+     * @return Returns active event view
+     */
+    public View getEventViewAt(int channelIndex, int eventIndex) {
+        for (View child : mRecycler.getActiveEventViews()) {
+            if (((LayoutParams) child.getLayoutParams()).mChannelIndex == channelIndex && ((LayoutParams) child
+                    .getLayoutParams()).mEventIndex == eventIndex) {
+                return child;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * @return Returns active channel indicator view
+     */
+    public View getChannelIndicatorViewAt(int channelIndex) {
+        for (View child : mRecycler.getActiveChannelIndicatorViews()) {
+            if (((LayoutParams) child.getLayoutParams()).mChannelIndex == channelIndex) {
+                return child;
+            }
+        }
+        return null;
     }
 
     public boolean isDrawTimeLine() {
@@ -2121,5 +2240,13 @@ public abstract class BaseGuideView extends GuideAdapterView<BaseGuideAdapter> {
 
     public int getChannelRowHeightExpanded() {
         return mChannelRowHeightExpanded;
+    }
+
+    public int getTimeLineSpecificOffset() {
+        return mTimeLineSpecificOffset;
+    }
+
+    public void setTimeLineSpecificOffset(int mTimeLineSpecificOffset) {
+        this.mTimeLineSpecificOffset = mTimeLineSpecificOffset;
     }
 }

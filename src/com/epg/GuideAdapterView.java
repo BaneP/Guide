@@ -192,14 +192,19 @@ public abstract class GuideAdapterView<T extends BaseGuideAdapter> extends ViewG
      * @return Returns first visible channel.
      */
     public int getFirstChannelPosition() {
-        return mFirstItemPosition;
+        return mFirstItemPosition >= 0 ? mFirstItemPosition : 0;
     }
 
     /**
      * @return Returns last visible channel.
      */
     public int getLastChannelPosition() {
-        return mLastItemPosition;
+        if (getAdapter() == null) {
+            return INVALID_POSITION;
+        }
+        return mLastItemPosition < getAdapter().getChannelsCount() ?
+                mLastItemPosition :
+                getAdapter().getChannelsCount() - 1;
     }
 
     /**

@@ -89,10 +89,11 @@ public class MyActivity extends Activity {
         case KeyEvent.KEYCODE_MEDIA_RECORD: {
             if (mGuideView.getGuideMode() == GuideView.GUIDE_MODE_ON_NOW) {
                 ((Adapter) mGuideView.getAdapter()).runningEvent += 1;
+                mGuideView.getAdapter().notifyChannelListChanged();
             } else {
                 ((Adapter) mGuideView.getAdapter()).mStartTime.add(Calendar.MINUTE, 30);
+                mGuideView.getAdapter().notifyStartOrEndTimeChanged();
             }
-            mGuideView.getAdapter().notifyDataSetChanged();
             return true;
         }
         case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE: {

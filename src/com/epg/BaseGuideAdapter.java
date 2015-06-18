@@ -1,19 +1,16 @@
 package com.epg;
 
-import android.database.DataSetObservable;
-import android.database.DataSetObserver;
-
 /**
  * @author Branimir Pavlovic
  */
 public abstract class BaseGuideAdapter implements IGuideAdapter {
-    private final DataSetObservable mDataSetObservable = new DataSetObservable();
+    private final GuideDataSetObservable mDataSetObservable = new GuideDataSetObservable();
 
-    public void registerDataSetObserver(DataSetObserver observer) {
+    public void registerDataSetObserver(GuideDataSetObserver observer) {
         mDataSetObservable.registerObserver(observer);
     }
 
-    public void unregisterDataSetObserver(DataSetObserver observer) {
+    public void unregisterDataSetObserver(GuideDataSetObserver observer) {
         mDataSetObservable.unregisterObserver(observer);
     }
 
@@ -21,8 +18,23 @@ public abstract class BaseGuideAdapter implements IGuideAdapter {
      * Notifies the attached observers that the underlying data has been changed
      * and any View reflecting the data set should refresh itself.
      */
-    public void notifyDataSetChanged() {
-        mDataSetObservable.notifyChanged();
+    public void notifyChannelListChanged() {
+        mDataSetObservable.notifyChangedServiceList();
+    }
+
+    /**
+     * Notifies the attached observers that the events underlying data has been changed
+     * and any View reflecting the data set should refresh itself.
+     */
+    public void notifyEventListChanged(final int channelIndex) {
+        mDataSetObservable.notifyChangedEventList(channelIndex);
+    }
+
+    /**
+     * Notifies the attached observers that start or end time has changed.
+     */
+    public void notifyStartOrEndTimeChanged() {
+        mDataSetObservable.notifyChangedStartOrEndTime();
     }
 
     /**

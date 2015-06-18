@@ -4,7 +4,9 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.Rect;
 import android.util.AttributeSet;
+import android.util.SparseArray;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
@@ -16,7 +18,6 @@ import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 
 /**
  * Custom view for representing guide information. Contains logic for layout child views, changing states of guide
@@ -25,6 +26,10 @@ import java.util.HashMap;
  * @author Branimir Pavlovic
  */
 public class GuideView extends BaseGuideView {
+    /**
+     * Defined time of refreshing in on now mode if guide is not refreshed for some time
+     */
+    private static final int ON_NOW_REFRESH_INTERVAL = 30000;
     /**
      * Open and close guide animation duration
      */
@@ -69,13 +74,17 @@ public class GuideView extends BaseGuideView {
      */
     private ArrayList<GuideRowInfo> mRows;
     /**
+     * List of visible event positions information
+     */
+    private SparseArray<EventsPositionInfo> mEventPositions;
+    /**
      * Force redraw when force changing size of guide (when changing guide mode)
      */
     private boolean redrawOnSizeChanged = false;
     /**
      * Contains information about running events for each channel
      */
-    private HashMap<Integer, GuideEventAnimInfo> mRunningEventInfo;
+    private SparseArray<GuideEventAnimInfo> mRunningEventInfo;
 
     /**
      * Guide hide animation listener
@@ -86,6 +95,16 @@ public class GuideView extends BaseGuideView {
      * Position of event view that will be selected when guide scrolls to it
      */
     private int mDesiredEventPosition = INVALID_POSITION;
+
+    /**
+     * Refresh drawing of time line
+     */
+    private final Runnable mRefreshOnNowRunnable = new Runnable() {
+        @Override
+        public void run() {
+            layoutChildren();
+        }
+    };
 
     public GuideView(Context context) throws Exception {
         super(context);
@@ -116,7 +135,9 @@ public class GuideView extends BaseGuideView {
         // Init rows information holder
         mRows = new ArrayList<GuideRowInfo>();
         //Init running event info
-        mRunningEventInfo = new HashMap<Integer, GuideEventAnimInfo>();
+        mRunningEventInfo = new SparseArray<GuideEventAnimInfo>();
+        //Init events info
+        mEventPositions = new SparseArray<EventsPositionInfo>();
     }
 
     @Override
@@ -316,6 +337,7 @@ public class GuideView extends BaseGuideView {
         case GUIDE_MODE_IN_TRANSITION: {
             if (newMode == GUIDE_MODE_FULL) {
                 mGuideMode = GUIDE_MODE_FULL;
+                mTimeLineSpecificOffset = INVALID_POSITION;
                 //TODO what to do here?
             }
             break;
@@ -369,7 +391,7 @@ public class GuideView extends BaseGuideView {
             @Override
             public void onAnimationStart(Animation animation) {
                 mGuideMode = GUIDE_MODE_IN_TRANSITION;
-                drawTimeLine = true;
+                mTimeLineRestrictedArea = null;
             }
 
             @Override
@@ -413,6 +435,9 @@ public class GuideView extends BaseGuideView {
             } else if (params instanceof FrameLayout.LayoutParams) {
                 ((FrameLayout.LayoutParams) params).gravity = Gravity.RIGHT;
             }
+            mTimeLineSpecificOffset = mRectTimeLine.width() / 4;
+            mTimeLineRestrictedArea = new Rect(mRectChannelIndicators.left, mRectTimeLine.top, mRectTimeLine.right,
+                    mRectTimeLine.bottom);
         } else if (mGuideMode == GUIDE_MODE_FULL) {
             if (params instanceof LinearLayout.LayoutParams) {
                 ((LinearLayout.LayoutParams) params).gravity = Gravity.NO_GRAVITY;
@@ -421,10 +446,10 @@ public class GuideView extends BaseGuideView {
             } else if (params instanceof FrameLayout.LayoutParams) {
                 ((FrameLayout.LayoutParams) params).gravity = Gravity.NO_GRAVITY;
             }
+            mTimeLineSpecificOffset = INVALID_POSITION;
         }
         redrawOnSizeChanged = true;
         setLayoutParams(params);
-        drawTimeLine = mGuideMode == GUIDE_MODE_FULL;
     }
 
     /**
@@ -459,6 +484,15 @@ public class GuideView extends BaseGuideView {
         }
     }
 
+    /**
+     * @param channelIndex Index of desired channel
+     * @return Returns object that contains information about first and last visible event. Returns NULL if channel
+     * is not visible on screen
+     */
+    public EventsPositionInfo getFirstLastVisibleEventForChannel(int channelIndex) {
+        return mEventPositions.get(channelIndex);
+    }
+
     @Override
     protected void dispatchDraw(Canvas canvas) {
         super.dispatchDraw(canvas);
@@ -482,6 +516,31 @@ public class GuideView extends BaseGuideView {
         layoutViews(LAYOUT_TYPE_EVENTS);
     }
 
+    @Override
+    protected void layoutEvents(int channelIndex) {
+        GuideRowInfo guideRowInfo = null;
+        FirstPositionInfo firstPositionInfo;
+        int currentX = mRectEventsArea.left;
+        for (int i = 0; i < mRows.size(); i++) {
+            if (channelIndex == mRows.get(i).getChannelIndex()) {
+                guideRowInfo = mRows.get(i);
+                break;
+            }
+        }
+        if (guideRowInfo != null) {
+            // Get first child position based on current scroll value
+            // and calculate its invisible part
+            firstPositionInfo = getPositionAndOffsetForScrollValue(
+                    mCurrentOffsetX, guideRowInfo.getChannelIndex());
+            // No data for desired channel, don't draw anything
+            if (firstPositionInfo.getFirstChildInvisiblePart() < 0
+                    || firstPositionInfo.getFirstChildIndex() < 0) {
+                return;
+            }
+            layoutEventViews(guideRowInfo, firstPositionInfo, currentX);
+        }
+    }
+
     /**
      * Calculates resized percent of channel row
      *
@@ -495,7 +554,14 @@ public class GuideView extends BaseGuideView {
 
     @Override
     protected void calculateRowPositions() {
+        if (mGuideMode == GUIDE_MODE_ON_NOW) {
+            removeCallbacks(mRefreshOnNowRunnable);
+            postDelayed(mRefreshOnNowRunnable, ON_NOW_REFRESH_INTERVAL);
+        } else {
+            removeCallbacks(mRefreshOnNowRunnable);
+        }
         mRows.clear();
+        mEventPositions.clear();
         int currentRowHeight = 0;
         int resizedPercent = 0;
         //log("calculateRowPositions, mCurrentOffsetY=" + mCurrentOffsetY);
@@ -676,25 +742,32 @@ public class GuideView extends BaseGuideView {
                         || firstPositionInfo.getFirstChildIndex() < 0) {
                     continue;
                 }
-                if (mGuideMode == GUIDE_MODE_ON_NOW) {
-                    layoutEventsOnNowMode(guideRowInfo);
-                } else if (mGuideMode == GUIDE_MODE_IN_TRANSITION) {
-                    layoutEventsInTransitionMode(guideRowInfo);
-                } else {
-                    // Move X coordinate to left to support drawing of invisible
-                    // part of event view
-                    currentX -= firstPositionInfo.getFirstChildInvisiblePart();
-                    if (firstPositionInfo.getFirstChildIndex() > 0) {
-                        currentX += mHorizontalDividerWidth;
-                    }
-                    // Layout all event views for channel
-                    layoutEventsRow(guideRowInfo.getChannelIndex(), currentX,
-                            guideRowInfo.getTop(),
-                            firstPositionInfo.getFirstChildIndex(),
-                            guideRowInfo.getHeight());
-                    currentX = mRectEventsArea.left;
-                }
+                layoutEventViews(guideRowInfo, firstPositionInfo, currentX);
             }
+        }
+    }
+
+    /**
+     * Layout event views in on layout
+     */
+    private void layoutEventViews(GuideRowInfo guideRowInfo, FirstPositionInfo firstPositionInfo, int currentX) {
+        if (mGuideMode == GUIDE_MODE_ON_NOW) {
+            layoutEventsOnNowMode(guideRowInfo);
+        } else if (mGuideMode == GUIDE_MODE_IN_TRANSITION) {
+            layoutEventsInTransitionMode(guideRowInfo);
+        } else {
+            // Move X coordinate to left to support drawing of invisible
+            // part of event view
+            currentX -= firstPositionInfo.getFirstChildInvisiblePart();
+            if (firstPositionInfo.getFirstChildIndex() > 0) {
+                currentX += mHorizontalDividerWidth;
+            }
+            // Layout all event views for channel
+            layoutEventsRow(guideRowInfo.getChannelIndex(), currentX,
+                    guideRowInfo.getTop(),
+                    firstPositionInfo.getFirstChildIndex(),
+                    guideRowInfo.getHeight());
+            currentX = mRectEventsArea.left;
         }
     }
 
@@ -706,6 +779,7 @@ public class GuideView extends BaseGuideView {
     private void layoutEventsOnNowMode(GuideRowInfo guideRowInfo) {
 
         final int eventIndex = mAdapter.getNowEventIndex(guideRowInfo.getChannelIndex());
+        mEventPositions.put(guideRowInfo.getChannelIndex(), new EventsPositionInfo(eventIndex, eventIndex));
         View attached = findItemAttachedToWindow(
                 LAYOUT_TYPE_EVENTS,
                 guideRowInfo.getChannelIndex(), eventIndex);
@@ -802,6 +876,7 @@ public class GuideView extends BaseGuideView {
             // If child right edge is larger or equals to right
             // bound of EpgView
             if (right >= getWidth()) {
+                mEventPositions.put(channelIndex, new EventsPositionInfo(firstChildIndex, j));
                 break;
             } else {
                 currentX = right + mHorizontalDividerWidth;
